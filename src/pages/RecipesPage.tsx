@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,14 +6,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Search, ChevronLeft, ChevronRight, UtensilsCrossed, Heart, Copy, Trash2 } from "lucide-react";
+import { Plus, Pencil, Search, ChevronLeft, ChevronRight, UtensilsCrossed, Heart, Copy, Trash2, X } from "lucide-react";
 
 const CATEGORIES = ["Alle", "Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 const PAGE_SIZE = 10;
+const UNITS = ["stk", "kg", "g", "l", "dl", "ml", "pakke", "spsk", "tsk", "dåse"];
 
 const emptyRecipe = {
   title: "", image_url: "", description: "", category: "Hovedret", prep_time: 30,
   instructions: "", is_manual: true, is_favorite: false,
+};
+
+type IngredientRow = {
+  id?: string;
+  product_id: string | null;
+  product_name: string;
+  quantity: number;
+  unit: string;
+  _deleted?: boolean;
 };
 
 export default function RecipesPage() {
@@ -24,6 +34,12 @@ export default function RecipesPage() {
   const [showEditor, setShowEditor] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [formData, setFormData] = useState(emptyRecipe);
+
+  // Ingredients state
+  const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
+  const [ingredientSearch, setIngredientSearch] = useState("");
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  const [addingIngredientIndex, setAddingIngredientIndex] = useState<number | null>(null);
 
   const { data: recipesData } = useQuery({
     queryKey: ["recipes_paginated", searchQuery, categoryFilter, page],
@@ -36,6 +52,43 @@ export default function RecipesPage() {
     },
   });
 
+  // Products for ingredient search
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const { data } = await supabase.from("products").select("*, item_categories(name)").order("name");
+      return data || [];
+    },
+  });
+
+  const filteredProducts = useMemo(() => {
+    if (!ingredientSearch) return products;
+    return products.filter((p: any) => p.name.toLowerCase().includes(ingredientSearch.toLowerCase()));
+  }, [products, ingredientSearch]);
+
+  // Load ingredients when editing
+  useEffect(() => {
+    if (showEditor && editingRecipe?.id) {
+      supabase
+        .from("recipe_ingredients")
+        .select("*, products(name)")
+        .eq("recipe_id", editingRecipe.id)
+        .then(({ data }) => {
+          setIngredients(
+            (data || []).map((ing: any) => ({
+              id: ing.id,
+              product_id: ing.product_id,
+              product_name: ing.products?.name || ing.name || "",
+              quantity: ing.quantity,
+              unit: ing.unit || "stk",
+            }))
+          );
+        });
+    } else if (showEditor && !editingRecipe) {
+      setIngredients([]);
+    }
+  }, [showEditor, editingRecipe]);
+
   const recipes = recipesData?.recipes || [];
   const totalPages = Math.ceil((recipesData?.total || 0) / PAGE_SIZE);
 
@@ -47,11 +100,44 @@ export default function RecipesPage() {
 
   const saveRecipe = useMutation({
     mutationFn: async (data: any) => {
+      let recipeId: string;
       if (data.id) {
         const { id, ...rest } = data;
         await supabase.from("recipes").update(rest).eq("id", id);
+        recipeId = id;
       } else {
-        await supabase.from("recipes").insert(data);
+        const { data: inserted } = await supabase.from("recipes").insert(data).select("id").single();
+        recipeId = inserted!.id;
+      }
+
+      // Save ingredients
+      const existing = ingredients.filter((i) => i.id && !i._deleted);
+      const toDelete = ingredients.filter((i) => i.id && i._deleted);
+      const toInsert = ingredients.filter((i) => !i.id && !i._deleted);
+
+      if (toDelete.length > 0) {
+        await supabase.from("recipe_ingredients").delete().in("id", toDelete.map((i) => i.id!));
+      }
+
+      for (const ing of existing) {
+        await supabase.from("recipe_ingredients").update({
+          product_id: ing.product_id,
+          name: ing.product_name,
+          quantity: ing.quantity,
+          unit: ing.unit,
+        }).eq("id", ing.id!);
+      }
+
+      if (toInsert.length > 0) {
+        await supabase.from("recipe_ingredients").insert(
+          toInsert.map((ing) => ({
+            recipe_id: recipeId,
+            product_id: ing.product_id,
+            name: ing.product_name,
+            quantity: ing.quantity,
+            unit: ing.unit,
+          }))
+        );
       }
     },
     onSuccess: () => {
@@ -63,6 +149,7 @@ export default function RecipesPage() {
 
   const deleteRecipe = useMutation({
     mutationFn: async (id: string) => {
+      await supabase.from("recipe_ingredients").delete().eq("recipe_id", id);
       await supabase.from("recipes").delete().eq("id", id);
     },
     onSuccess: () => {
@@ -84,6 +171,7 @@ export default function RecipesPage() {
   const openNew = () => {
     setEditingRecipe(null);
     setFormData({ ...emptyRecipe });
+    setIngredients([]);
     setShowEditor(true);
   };
 
@@ -97,17 +185,52 @@ export default function RecipesPage() {
     setShowEditor(true);
   };
 
-  const cloneRecipe = (recipe: any) => {
+  const cloneRecipe = async (recipe: any) => {
+    // Load ingredients from source recipe
+    const { data: srcIngredients } = await supabase
+      .from("recipe_ingredients")
+      .select("*, products(name)")
+      .eq("recipe_id", recipe.id);
+
     setEditingRecipe(null);
     setFormData({
       title: `${recipe.title} (kopi)`, image_url: recipe.image_url || "", description: recipe.description || "",
       category: recipe.category || "Hovedret", prep_time: recipe.prep_time || 30,
       instructions: recipe.instructions || "", is_manual: true, is_favorite: false,
     });
+    setIngredients(
+      (srcIngredients || []).map((ing: any) => ({
+        product_id: ing.product_id,
+        product_name: ing.products?.name || ing.name || "",
+        quantity: ing.quantity,
+        unit: ing.unit || "stk",
+      }))
+    );
     setShowEditor(true);
   };
 
   const updateField = (field: string, value: any) => setFormData((f) => ({ ...f, [field]: value }));
+
+  const addIngredientFromProduct = (product: any) => {
+    setIngredients((prev) => [
+      ...prev,
+      { product_id: product.id, product_name: product.name, quantity: 1, unit: product.unit || "stk" },
+    ]);
+    setShowProductSearch(false);
+    setIngredientSearch("");
+  };
+
+  const updateIngredient = (index: number, field: string, value: any) => {
+    setIngredients((prev) => prev.map((ing, i) => (i === index ? { ...ing, [field]: value } : ing)));
+  };
+
+  const removeIngredient = (index: number) => {
+    setIngredients((prev) =>
+      prev.map((ing, i) => (i === index ? (ing.id ? { ...ing, _deleted: true } : ing) : ing)).filter((ing) => !(!ing.id && ing._deleted))
+    );
+  };
+
+  const activeIngredients = ingredients.filter((i) => !i._deleted);
 
   return (
     <div className="space-y-4">
@@ -216,6 +339,47 @@ export default function RecipesPage() {
               <div><Label>Tilberedningstid (min)</Label><Input type="number" value={formData.prep_time} onChange={(e) => updateField("prep_time", Number(e.target.value))} className="min-h-[44px]" /></div>
             </div>
             <div><Label>Fremgangsmåde</Label><textarea value={formData.instructions} onChange={(e) => updateField("instructions", e.target.value)} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[120px]" /></div>
+
+            {/* Ingredients section */}
+            <div className="space-y-2 pt-2 border-t">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold">Ingredienser</Label>
+                <Button type="button" size="sm" variant="outline" onClick={() => { setShowProductSearch(true); setIngredientSearch(""); }} className="min-h-[36px] gap-1">
+                  <Plus className="h-3 w-3" /> Tilføj ingrediens
+                </Button>
+              </div>
+
+              {activeIngredients.length === 0 && (
+                <p className="text-sm text-muted-foreground py-2">Ingen ingredienser tilføjet endnu</p>
+              )}
+
+              {activeIngredients.map((ing, idx) => {
+                const realIndex = ingredients.findIndex((i) => i === ing);
+                return (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="flex-1 text-sm truncate">{ing.product_name}</span>
+                    <Input
+                      type="number"
+                      value={ing.quantity}
+                      onChange={(e) => updateIngredient(realIndex, "quantity", Number(e.target.value))}
+                      className="w-20 min-h-[36px]"
+                      min={0.1}
+                      step={0.1}
+                    />
+                    <select
+                      value={ing.unit}
+                      onChange={(e) => updateIngredient(realIndex, "unit", e.target.value)}
+                      className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    >
+                      {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <Button size="icon" variant="ghost" onClick={() => removeIngredient(realIndex)} className="min-h-[36px] min-w-[36px] text-destructive shrink-0">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
           <DialogFooter className="gap-2">
             {editingRecipe && (
@@ -233,6 +397,43 @@ export default function RecipesPage() {
               {editingRecipe ? "Gem" : "Opret"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Product search dialog for ingredients */}
+      <Dialog open={showProductSearch} onOpenChange={setShowProductSearch}>
+        <DialogContent className="max-w-md max-h-[70vh]">
+          <DialogHeader><DialogTitle>Vælg produkt</DialogTitle></DialogHeader>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Søg i varekatalog..."
+              value={ingredientSearch}
+              onChange={(e) => setIngredientSearch(e.target.value)}
+              className="pl-10 min-h-[44px]"
+              autoFocus
+            />
+          </div>
+          <div className="max-h-[50vh] overflow-y-auto space-y-1">
+            {filteredProducts.map((product: any) => (
+              <div
+                key={product.id}
+                className="flex items-center gap-2 p-2 rounded-md hover:bg-muted cursor-pointer transition-colors"
+                onClick={() => addIngredientFromProduct(product)}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{product.name}</div>
+                  <div className="text-xs text-muted-foreground">{product.item_categories?.name || "Ingen kategori"} · {product.unit || "stk"}</div>
+                </div>
+                <Badge variant={product.is_manual ? "outline" : "secondary"} className="text-xs shrink-0">
+                  {product.is_manual ? "Manuel" : "API"}
+                </Badge>
+              </div>
+            ))}
+            {filteredProducts.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">Ingen produkter fundet</p>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -7,14 +7,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Settings, ShoppingCart, Trash2, Pencil } from "lucide-react";
+import { Plus, Settings, ShoppingCart, Trash2, Pencil, Search } from "lucide-react";
+
+const UNITS = ["stk", "kg", "g", "l", "dl", "ml", "pakke", "spsk", "tsk", "dåse"];
 
 export default function ShoppingListPage() {
   const queryClient = useQueryClient();
   const [showAddItem, setShowAddItem] = useState(false);
   const [showCategoryAdmin, setShowCategoryAdmin] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [newItem, setNewItem] = useState({ product_name: "", quantity: 1, unit: "stk", category_id: "", source_type: "manual" as const });
+  const [showCreateProduct, setShowCreateProduct] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [addQuantity, setAddQuantity] = useState(1);
+  const [addUnit, setAddUnit] = useState("stk");
+  const [newProduct, setNewProduct] = useState({ name: "", unit: "stk", category_id: "" });
   const [newCategory, setNewCategory] = useState({ name: "", sort_order: 0 });
   const [editingCategory, setEditingCategory] = useState<any>(null);
 
@@ -34,6 +40,19 @@ export default function ShoppingListPage() {
     },
   });
 
+  const { data: products = [] } = useQuery({
+    queryKey: ["products_catalog"],
+    queryFn: async () => {
+      const { data } = await supabase.from("products").select("*, item_categories(name)").order("name");
+      return data || [];
+    },
+  });
+
+  const filteredProducts = useMemo(() => {
+    if (!productSearch) return products;
+    return products.filter((p: any) => p.name.toLowerCase().includes(productSearch.toLowerCase()));
+  }, [products, productSearch]);
+
   const groupedItems = useMemo(() => {
     const groups: Record<string, { category: string; sortOrder: number; items: any[] }> = {};
     items.forEach((item: any) => {
@@ -52,17 +71,46 @@ export default function ShoppingListPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] }),
   });
 
-  const addItem = useMutation({
-    mutationFn: async (item: any) => {
+  const addItemFromProduct = useMutation({
+    mutationFn: async ({ product, quantity, unit }: { product: any; quantity: number; unit: string }) => {
       await supabase.from("shopping_list_items").insert({
-        ...item,
-        category_id: item.category_id || null,
+        product_name: product.name,
+        product_id: product.id,
+        category_id: product.category_id || null,
+        quantity,
+        unit,
+        source_type: "manual",
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
       setShowAddItem(false);
-      setNewItem({ product_name: "", quantity: 1, unit: "stk", category_id: "", source_type: "manual" });
+      setSelectedProduct(null);
+      setAddQuantity(1);
+      setAddUnit("stk");
+      setProductSearch("");
+    },
+  });
+
+  const createProduct = useMutation({
+    mutationFn: async (product: { name: string; unit: string; category_id: string }) => {
+      const { data } = await supabase.from("products").insert({
+        name: product.name,
+        unit: product.unit,
+        category_id: product.category_id || null,
+        is_manual: true,
+      }).select("*, item_categories(name)").single();
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["products_catalog"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      setShowCreateProduct(false);
+      setNewProduct({ name: "", unit: "stk", category_id: "" });
+      if (data) {
+        setSelectedProduct(data);
+        setAddUnit(data.unit || "stk");
+      }
     },
   });
 
@@ -124,6 +172,20 @@ export default function ShoppingListPage() {
 
   const uncheckedCount = items.filter((i: any) => !i.is_checked).length;
 
+  const openAddItem = () => {
+    setSelectedProduct(null);
+    setProductSearch("");
+    setAddQuantity(1);
+    setAddUnit("stk");
+    setShowAddItem(true);
+  };
+
+  const selectProduct = (product: any) => {
+    setSelectedProduct(product);
+    setAddUnit(product.unit || "stk");
+    setAddQuantity(1);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -132,7 +194,7 @@ export default function ShoppingListPage() {
           <Button variant="outline" size="icon" onClick={() => setShowCategoryAdmin(true)} className="min-h-[44px] min-w-[44px]">
             <Settings className="h-5 w-5" />
           </Button>
-          <Button size="icon" onClick={() => setShowAddItem(true)} className="min-h-[44px] min-w-[44px]">
+          <Button size="icon" onClick={openAddItem} className="min-h-[44px] min-w-[44px]">
             <Plus className="h-5 w-5" />
           </Button>
           <Button onClick={() => placeOrder.mutate()} disabled={uncheckedCount === 0} className="min-h-[44px] gap-2">
@@ -175,29 +237,96 @@ export default function ShoppingListPage() {
         </div>
       )}
 
-      {/* Add item dialog */}
+      {/* Product catalog search dialog */}
       <Dialog open={showAddItem} onOpenChange={setShowAddItem}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Tilføj vare</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Varenavn</Label><Input value={newItem.product_name} onChange={(e) => setNewItem({ ...newItem, product_name: e.target.value })} placeholder="Søg eller skriv varenavn..." className="min-h-[44px]" /></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><Label>Antal</Label><Input type="number" value={newItem.quantity} onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })} min={1} className="min-h-[44px]" /></div>
-              <div><Label>Enhed</Label>
-                <select value={newItem.unit} onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                  <option value="stk">stk</option><option value="kg">kg</option><option value="g">g</option><option value="l">l</option><option value="dl">dl</option><option value="ml">ml</option><option value="pakke">pakke</option>
-                </select>
+        <DialogContent className="max-w-md max-h-[80vh]">
+          <DialogHeader><DialogTitle>Tilføj vare fra katalog</DialogTitle></DialogHeader>
+
+          {!selectedProduct ? (
+            <>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Søg i varekatalog..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="pl-10 min-h-[44px]"
+                  autoFocus
+                />
               </div>
+              <div className="max-h-[50vh] overflow-y-auto space-y-1">
+                {filteredProducts.map((product: any) => (
+                  <div
+                    key={product.id}
+                    className="flex items-center gap-2 p-2 rounded-md hover:bg-muted cursor-pointer transition-colors"
+                    onClick={() => selectProduct(product)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{product.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {product.item_categories?.name || "Ingen kategori"} · {product.unit || "stk"}
+                      </div>
+                    </div>
+                    <Badge variant={product.is_manual ? "outline" : "secondary"} className="text-xs shrink-0">
+                      {product.is_manual ? "Manuel" : "API"}
+                    </Badge>
+                  </div>
+                ))}
+                {filteredProducts.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">Ingen produkter fundet</p>
+                )}
+              </div>
+              <Button variant="outline" onClick={() => setShowCreateProduct(true)} className="w-full min-h-[44px] gap-2">
+                <Plus className="h-4 w-4" /> Opret ny vare
+              </Button>
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div className="p-3 rounded-lg border bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">{selectedProduct.name}</div>
+                    <div className="text-xs text-muted-foreground">{selectedProduct.item_categories?.name || "Ingen kategori"}</div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedProduct(null)} className="min-h-[36px]">Skift</Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><Label>Antal</Label><Input type="number" value={addQuantity} onChange={(e) => setAddQuantity(Number(e.target.value))} min={0.1} step={0.1} className="min-h-[44px]" /></div>
+                <div><Label>Enhed</Label>
+                  <select value={addUnit} onChange={(e) => setAddUnit(e.target.value)} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => addItemFromProduct.mutate({ product: selectedProduct, quantity: addQuantity, unit: addUnit })} className="min-h-[44px] w-full">Tilføj til indkøbsliste</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create new product dialog */}
+      <Dialog open={showCreateProduct} onOpenChange={setShowCreateProduct}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Opret ny vare</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Varenavn</Label><Input value={newProduct.name} onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="Navn..." className="min-h-[44px]" autoFocus /></div>
+            <div><Label>Enhed</Label>
+              <select value={newProduct.unit} onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
             </div>
             <div><Label>Kategori</Label>
-              <select value={newItem.category_id} onChange={(e) => setNewItem({ ...newItem, category_id: e.target.value })} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <select value={newProduct.category_id} onChange={(e) => setNewProduct({ ...newProduct, category_id: e.target.value })} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
                 <option value="">Vælg kategori...</option>
                 {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={() => newItem.product_name && addItem.mutate(newItem)} disabled={!newItem.product_name} className="min-h-[44px]">Tilføj</Button>
+            <Button onClick={() => newProduct.name && createProduct.mutate(newProduct)} disabled={!newProduct.name} className="min-h-[44px]">Opret vare</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
