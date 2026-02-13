@@ -12,6 +12,53 @@ import { da } from "date-fns/locale";
 const DAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
 const CATEGORIES = ["Alle", "Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 
+async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remove") {
+  // Fetch recipe ingredients with product info
+  const { data: ingredients } = await supabase
+    .from("recipe_ingredients")
+    .select("*, products(name, category_id, unit)")
+    .eq("recipe_id", recipeId);
+
+  if (!ingredients || ingredients.length === 0) return;
+
+  if (action === "add") {
+    for (const ing of ingredients) {
+      // Check if this product is already on the shopping list from this recipe
+      const { data: existing } = await supabase
+        .from("shopping_list_items")
+        .select("*")
+        .eq("source_type", "recipe")
+        .eq("recipe_id", recipeId)
+        .eq("product_id", ing.product_id)
+        .maybeSingle();
+
+      if (existing) {
+        // Update quantity
+        await supabase.from("shopping_list_items")
+          .update({ quantity: existing.quantity + ing.quantity })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("shopping_list_items").insert({
+          product_name: ing.products?.name || ing.name || "Ukendt",
+          product_id: ing.product_id,
+          category_id: ing.products?.category_id || null,
+          quantity: ing.quantity,
+          unit: ing.unit || ing.products?.unit || "stk",
+          source_type: "recipe",
+          recipe_id: recipeId,
+        });
+      }
+    }
+  } else {
+    // Remove: delete all shopping list items with this recipe_id and source_type "recipe"
+    await supabase
+      .from("shopping_list_items")
+      .delete()
+      .eq("source_type", "recipe")
+      .eq("recipe_id", recipeId);
+  }
+}
+
 export default function MealPlanPage() {
   const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -55,6 +102,12 @@ export default function MealPlanPage() {
   const setMealPlan = useMutation({
     mutationFn: async ({ dayOfWeek, recipeId }: { dayOfWeek: number; recipeId: string | null }) => {
       const existing = mealPlans.find((mp: any) => mp.day_of_week === dayOfWeek);
+
+      // Remove old recipe's shopping items if swapping/clearing
+      if (existing?.recipe_id && existing.recipe_id !== recipeId) {
+        await syncShoppingListForRecipe(existing.recipe_id, "remove");
+      }
+
       if (existing) {
         if (recipeId) {
           await supabase.from("meal_plans").update({ recipe_id: recipeId }).eq("id", existing.id);
@@ -71,8 +124,16 @@ export default function MealPlanPage() {
           plan_date: format(date, "yyyy-MM-dd"),
         });
       }
+
+      // Add new recipe's ingredients to shopping list
+      if (recipeId) {
+        await syncShoppingListForRecipe(recipeId, "add");
+      }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meal_plans"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["meal_plans"] });
+      queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+    },
   });
 
   const swapMeals = useMutation({
