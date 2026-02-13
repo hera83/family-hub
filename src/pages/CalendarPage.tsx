@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronLeft, ChevronRight, Plus, Users, Trash2, Pencil } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronLeft, ChevronRight, Plus, Users, Trash2, Pencil, Repeat } from "lucide-react";
 import {
   format,
   startOfWeek,
@@ -20,6 +21,12 @@ import {
   isSameDay,
   isSameMonth,
   isToday,
+  getDay,
+  getDate,
+  getMonth,
+  getDayOfYear,
+  isBefore,
+  parseISO,
 } from "date-fns";
 import { da } from "date-fns/locale";
 
@@ -32,6 +39,42 @@ const MUTED_COLORS = [
   "hsl(190, 30%, 55%)",
 ];
 
+const DAY_LABELS = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"];
+// ISO weekday: 1=Mon, 7=Sun
+const DAY_OPTIONS = [
+  { value: 1, label: "Mandag" },
+  { value: 2, label: "Tirsdag" },
+  { value: 3, label: "Onsdag" },
+  { value: 4, label: "Torsdag" },
+  { value: 5, label: "Fredag" },
+  { value: 6, label: "Lørdag" },
+  { value: 7, label: "Søndag" },
+];
+
+/** Convert JS Date getDay() (0=Sun) to ISO (1=Mon, 7=Sun) */
+function toISODay(jsDay: number) {
+  return jsDay === 0 ? 7 : jsDay;
+}
+
+/** Check if a recurring event falls on a given day */
+function recursFallsOnDay(event: any, day: Date): boolean {
+  const eventStart = parseISO(event.event_date);
+  if (isBefore(day, eventStart)) return false;
+
+  switch (event.recurrence_type) {
+    case "weekly": {
+      const isoDayOfWeek = toISODay(getDay(day));
+      return (event.recurrence_days as number[] || []).includes(isoDayOfWeek);
+    }
+    case "monthly":
+      return getDate(day) === getDate(eventStart);
+    case "yearly":
+      return getDate(day) === getDate(eventStart) && getMonth(day) === getMonth(eventStart);
+    default:
+      return false;
+  }
+}
+
 export default function CalendarPage() {
   const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -42,7 +85,11 @@ export default function CalendarPage() {
   const [editingEvent, setEditingEvent] = useState<any>(null);
   const [editingMember, setEditingMember] = useState<any>(null);
   const [newMember, setNewMember] = useState({ name: "", color: MUTED_COLORS[0] });
-  const [newEvent, setNewEvent] = useState({ title: "", description: "", event_date: "", start_time: "", end_time: "", member_id: "" });
+  const [newEvent, setNewEvent] = useState({
+    title: "", description: "", event_date: "", start_time: "", end_time: "", member_id: "",
+    recurrence_type: "" as "" | "weekly" | "monthly" | "yearly",
+    recurrence_days: [] as number[],
+  });
 
   const { data: members = [] } = useQuery({
     queryKey: ["family_members"],
@@ -65,7 +112,8 @@ export default function CalendarPage() {
     return { start, end, days: eachDayOfInterval({ start: monthStart, end: monthEnd }) };
   }, [currentDate, viewMode]);
 
-  const { data: events = [] } = useQuery({
+  // Fetch non-recurring events in range
+  const { data: normalEvents = [] } = useQuery({
     queryKey: ["calendar_events", dateRange.start.toISOString(), dateRange.end.toISOString()],
     queryFn: async () => {
       const startStr = format(dateRange.days[0], "yyyy-MM-dd");
@@ -73,7 +121,23 @@ export default function CalendarPage() {
       const { data } = await supabase
         .from("calendar_events")
         .select("*, family_members(name, color)")
+        .is("recurrence_type", null)
         .gte("event_date", startStr)
+        .lte("event_date", endStr)
+        .order("start_time");
+      return data || [];
+    },
+  });
+
+  // Fetch all recurring events (their start date <= end of visible range)
+  const { data: recurringEvents = [] } = useQuery({
+    queryKey: ["recurring_events", dateRange.days[dateRange.days.length - 1].toISOString()],
+    queryFn: async () => {
+      const endStr = format(dateRange.days[dateRange.days.length - 1], "yyyy-MM-dd");
+      const { data } = await supabase
+        .from("calendar_events")
+        .select("*, family_members(name, color)")
+        .not("recurrence_type", "is", null)
         .lte("event_date", endStr)
         .order("start_time");
       return data || [];
@@ -97,6 +161,7 @@ export default function CalendarPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["family_members"] });
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
+      queryClient.invalidateQueries({ queryKey: ["recurring_events"] });
       setEditingMember(null);
     },
   });
@@ -108,6 +173,7 @@ export default function CalendarPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["family_members"] });
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
+      queryClient.invalidateQueries({ queryKey: ["recurring_events"] });
     },
   });
 
@@ -121,9 +187,10 @@ export default function CalendarPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
+      queryClient.invalidateQueries({ queryKey: ["recurring_events"] });
       setShowEventDialog(false);
       setEditingEvent(null);
-      setNewEvent({ title: "", description: "", event_date: "", start_time: "", end_time: "", member_id: "" });
+      resetEventForm();
     },
   });
 
@@ -131,8 +198,15 @@ export default function CalendarPage() {
     mutationFn: async (id: string) => {
       await supabase.from("calendar_events").delete().eq("id", id);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calendar_events"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
+      queryClient.invalidateQueries({ queryKey: ["recurring_events"] });
+    },
   });
+
+  const resetEventForm = () => {
+    setNewEvent({ title: "", description: "", event_date: "", start_time: "", end_time: "", member_id: "", recurrence_type: "", recurrence_days: [] });
+  };
 
   const navigate = (direction: "prev" | "next") => {
     if (viewMode === "week") {
@@ -145,12 +219,12 @@ export default function CalendarPage() {
   const openAddEvent = (date?: Date) => {
     setEditingEvent(null);
     setNewEvent({
-      title: "",
-      description: "",
+      title: "", description: "",
       event_date: date ? format(date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
-      start_time: "",
-      end_time: "",
+      start_time: "", end_time: "",
       member_id: members[0]?.id || "",
+      recurrence_type: "",
+      recurrence_days: [],
     });
     setShowEventDialog(true);
   };
@@ -164,15 +238,45 @@ export default function CalendarPage() {
       start_time: event.start_time || "",
       end_time: event.end_time || "",
       member_id: event.member_id || "",
+      recurrence_type: event.recurrence_type || "",
+      recurrence_days: event.recurrence_days || [],
     });
     setShowEventDialog(true);
   };
 
-  const getEventsForDay = (day: Date) => events.filter((e: any) => isSameDay(new Date(e.event_date), day));
+  /** Get all events (normal + virtual recurring instances) for a given day */
+  const getEventsForDay = (day: Date) => {
+    const normal = normalEvents.filter((e: any) => isSameDay(parseISO(e.event_date), day));
+    const recurring = recurringEvents.filter((e: any) => recursFallsOnDay(e, day)).map((e: any) => ({
+      ...e,
+      _virtualDate: format(day, "yyyy-MM-dd"),
+    }));
+    return [...normal, ...recurring];
+  };
 
   const getMemberColor = (memberId: string) => {
     const member = members.find((m: any) => m.id === memberId);
     return member?.color || "hsl(210, 15%, 70%)";
+  };
+
+  const recurrenceLabel = (event: any) => {
+    if (!event.recurrence_type) return null;
+    if (event.recurrence_type === "weekly") {
+      const dayNames = (event.recurrence_days || []).sort((a: number, b: number) => a - b).map((d: number) => DAY_OPTIONS.find(o => o.value === d)?.label?.slice(0, 3) || "");
+      return `Hver ${dayNames.join(", ")}`;
+    }
+    if (event.recurrence_type === "monthly") return "Hver måned";
+    if (event.recurrence_type === "yearly") return "Hvert år";
+    return null;
+  };
+
+  const toggleRecurrenceDay = (day: number) => {
+    setNewEvent(prev => ({
+      ...prev,
+      recurrence_days: prev.recurrence_days.includes(day)
+        ? prev.recurrence_days.filter(d => d !== day)
+        : [...prev.recurrence_days, day],
+    }));
   };
 
   return (
@@ -219,8 +323,8 @@ export default function CalendarPage() {
       </div>
 
       {/* Calendar grid */}
-      <div className={`grid ${viewMode === "week" ? "grid-cols-7" : "grid-cols-7"} gap-1`}>
-        {["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"].map((d) => (
+      <div className="grid grid-cols-7 gap-1">
+        {DAY_LABELS.map((d) => (
           <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
             {d}
           </div>
@@ -241,14 +345,15 @@ export default function CalendarPage() {
               </div>
               <div className="space-y-0.5">
                 {viewMode === "week"
-                  ? dayEvents.slice(0, 4).map((e: any) => (
+                  ? dayEvents.slice(0, 4).map((e: any, i: number) => (
                       <div
-                        key={e.id}
-                        className="text-xs px-1.5 py-0.5 rounded truncate cursor-pointer"
+                        key={e.id + (e._virtualDate || "") + i}
+                        className="text-xs px-1.5 py-0.5 rounded truncate cursor-pointer flex items-center gap-0.5"
                         style={{ backgroundColor: getMemberColor(e.member_id), color: "white" }}
                         onClick={(ev) => { ev.stopPropagation(); openEditEvent(e); }}
                       >
-                        {e.start_time ? `${e.start_time.slice(0, 5)} ` : ""}{e.title}
+                        {e.recurrence_type && <Repeat className="h-2.5 w-2.5 shrink-0" />}
+                        <span className="truncate">{e.start_time ? `${e.start_time.slice(0, 5)} ` : ""}{e.title}</span>
                       </div>
                     ))
                   : (() => {
@@ -320,7 +425,7 @@ export default function CalendarPage() {
           <DialogHeader><DialogTitle>{editingEvent ? "Rediger aktivitet" : "Ny aktivitet"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Titel</Label><Input value={newEvent.title} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} className="min-h-[44px]" /></div>
-            <div><Label>Dato</Label><Input type="date" value={newEvent.event_date} onChange={(e) => setNewEvent({ ...newEvent, event_date: e.target.value })} className="min-h-[44px]" /></div>
+            <div><Label>{newEvent.recurrence_type ? "Startdato" : "Dato"}</Label><Input type="date" value={newEvent.event_date} onChange={(e) => setNewEvent({ ...newEvent, event_date: e.target.value })} className="min-h-[44px]" /></div>
             <div className="grid grid-cols-2 gap-2">
               <div><Label>Start</Label><Input type="time" value={newEvent.start_time} onChange={(e) => setNewEvent({ ...newEvent, start_time: e.target.value })} className="min-h-[44px]" /></div>
               <div><Label>Slut</Label><Input type="time" value={newEvent.end_time} onChange={(e) => setNewEvent({ ...newEvent, end_time: e.target.value })} className="min-h-[44px]" /></div>
@@ -337,21 +442,83 @@ export default function CalendarPage() {
               </select>
             </div>
             <div><Label>Beskrivelse</Label><Input value={newEvent.description} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} className="min-h-[44px]" /></div>
+
+            {/* Recurrence section */}
+            <div className="border-t pt-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <Repeat className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm font-medium">Gentagelse</Label>
+              </div>
+              <select
+                value={newEvent.recurrence_type}
+                onChange={(e) => setNewEvent({ ...newEvent, recurrence_type: e.target.value as any, recurrence_days: [] })}
+                className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Ingen gentagelse</option>
+                <option value="weekly">Ugentlig</option>
+                <option value="monthly">Månedlig</option>
+                <option value="yearly">Årlig</option>
+              </select>
+
+              {newEvent.recurrence_type === "weekly" && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Vælg dage</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {DAY_OPTIONS.map((d) => (
+                      <button
+                        key={d.value}
+                        type="button"
+                        onClick={() => toggleRecurrenceDay(d.value)}
+                        className={`px-3 py-2 rounded-md text-sm font-medium min-h-[44px] transition-colors border ${
+                          newEvent.recurrence_days.includes(d.value)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-foreground border-input hover:bg-muted"
+                        }`}
+                      >
+                        {d.label.slice(0, 3)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {newEvent.recurrence_type === "monthly" && (
+                <p className="text-xs text-muted-foreground">
+                  Gentages den {newEvent.event_date ? format(parseISO(newEvent.event_date), "d.") : "valgte dato"} hver måned
+                </p>
+              )}
+
+              {newEvent.recurrence_type === "yearly" && (
+                <p className="text-xs text-muted-foreground">
+                  Gentages den {newEvent.event_date ? format(parseISO(newEvent.event_date), "d. MMMM", { locale: da }) : "valgte dato"} hvert år
+                </p>
+              )}
+            </div>
           </div>
           <DialogFooter className="gap-2">
             {editingEvent && (
-              <Button variant="destructive" onClick={() => { deleteEvent.mutate(editingEvent.id); setShowEventDialog(false); }} className="min-h-[44px]">Slet</Button>
+              <Button variant="destructive" onClick={() => { deleteEvent.mutate(editingEvent.id); setShowEventDialog(false); }} className="min-h-[44px]">
+                {editingEvent.recurrence_type ? "Slet alle" : "Slet"}
+              </Button>
             )}
             <Button
               onClick={() => {
-                const payload: any = { ...newEvent };
-                if (!payload.start_time) delete payload.start_time;
-                if (!payload.end_time) delete payload.end_time;
-                if (!payload.member_id) delete payload.member_id;
+                const payload: any = {
+                  title: newEvent.title,
+                  description: newEvent.description || null,
+                  event_date: newEvent.event_date,
+                  start_time: newEvent.start_time || null,
+                  end_time: newEvent.end_time || null,
+                  member_id: newEvent.member_id || null,
+                  recurrence_type: newEvent.recurrence_type || null,
+                  recurrence_days: newEvent.recurrence_type === "weekly" && newEvent.recurrence_days.length > 0
+                    ? newEvent.recurrence_days
+                    : null,
+                };
                 if (editingEvent) payload.id = editingEvent.id;
                 addEvent.mutate(payload);
               }}
-              disabled={!newEvent.title || !newEvent.event_date}
+              disabled={!newEvent.title || !newEvent.event_date || (newEvent.recurrence_type === "weekly" && newEvent.recurrence_days.length === 0)}
               className="min-h-[44px]"
             >
               {editingEvent ? "Gem" : "Opret"}
@@ -372,11 +539,15 @@ export default function CalendarPage() {
             {showEventPopup &&
               getEventsForDay(showEventPopup.date)
                 .filter((e: any) => e.member_id === showEventPopup.memberId)
-                .map((e: any) => (
-                  <div key={e.id} className="flex items-center justify-between p-2 rounded-md bg-muted">
+                .map((e: any, i: number) => (
+                  <div key={e.id + i} className="flex items-center justify-between p-2 rounded-md bg-muted">
                     <div>
-                      <div className="font-medium text-sm">{e.title}</div>
+                      <div className="font-medium text-sm flex items-center gap-1">
+                        {e.recurrence_type && <Repeat className="h-3 w-3" />}
+                        {e.title}
+                      </div>
                       {e.start_time && <div className="text-xs text-muted-foreground">{e.start_time.slice(0, 5)}{e.end_time ? ` – ${e.end_time.slice(0, 5)}` : ""}</div>}
+                      {recurrenceLabel(e) && <div className="text-xs text-muted-foreground">{recurrenceLabel(e)}</div>}
                     </div>
                     <Button size="icon" variant="ghost" onClick={() => { setShowEventPopup(null); openEditEvent(e); }} className="min-h-[44px] min-w-[44px]"><Pencil className="h-4 w-4" /></Button>
                   </div>
