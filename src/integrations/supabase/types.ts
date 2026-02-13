@@ -22,6 +22,8 @@ export type Database = {
           event_date: string
           id: string
           member_id: string | null
+          recurrence_days: number[] | null
+          recurrence_type: string | null
           start_time: string | null
           title: string
         }
@@ -32,6 +34,8 @@ export type Database = {
           event_date: string
           id?: string
           member_id?: string | null
+          recurrence_days?: number[] | null
+          recurrence_type?: string | null
           start_time?: string | null
           title: string
         }
@@ -42,6 +46,8 @@ export type Database = {
           event_date?: string
           id?: string
           member_id?: string | null
+          recurrence_days?: number[] | null
+          recurrence_type?: string | null
           start_time?: string | null
           title?: string
         }
