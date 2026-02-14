@@ -1,75 +1,141 @@
 
+# Indkoebsliste-rettelser: Administration, Varekatalog, Bestilling og Visningslogik
 
-# Ingredienser, Varekatalog og Madplan-synkronisering
-
-Tre sammenhængende ændringer der binder opskrifter, varekatalog og indkøbsliste sammen.
-
----
-
-## 1. Ingrediensliste på opskrifter
-
-Opskrift-editoren (`RecipesPage.tsx`) udvides med en ingrediens-sektion, hvor man kan tilfoeje, redigere og slette ingredienser. Hver ingrediens linkes til en vare fra `products`-tabellen via `product_id` i `recipe_ingredients`.
-
-- Ingrediens-felter: produkt (valgt fra varekatalog), antal, enhed
-- Ved klon af en API-opskrift kopieres ingredienserne med
-- Ingredienser gemmes i `recipe_ingredients`-tabellen (som allerede eksisterer med `product_id`, `quantity`, `unit`, `recipe_id`)
+Seks sammenhaegende aendringer til indkoebslisten, ordresystemet og madplan-synkroniseringen.
 
 ---
 
-## 2. Nyt varekatalog i "Tilfoej vare"-popup (Indkoebsliste)
+## 1. Tandhjul bliver til "Kategorier og Varer" administration
 
-Den nuvaerende "Tilfoej vare"-dialog erstattes med en soege-popup der viser varer fra `products`-tabellen:
+Det nuvaerende kategori-admin-dialog udvides til en dialog med to tabs:
 
-- Soegefelt med live-filtrering af produkter
-- Hvert produkt vises med navn, enhed og kategori
-- Badge der viser "API" eller "Manuel"
-- Man vaelger en vare, angiver antal, og den tilfoejes til indkoebslisten med korrekt `product_id` og `category_id`
-- Knap til at oprette en ny manuel vare hvis den ikke findes i kataloget
-- Manuelle varer kan redigeres og slettes, API-varer er laasede
+**Tab 1: Kategorier** (beholdes som nu)
+- Opret, rediger, slet kategorier med soegefelt oeverst
+
+**Tab 2: Varer**
+- Liste over alle varer fra `products`-tabellen med soegefelt
+- Opret ny vare med felter: Varenavn, Billede URL, Beskrivelse, Enhed og maengde (f.eks. "1 L"), Pris (kroner og oere, f.eks. 11,95), Kategori, Favoritvare-markering, Naeringsindhold pr. 100g (valgfrit: kalorier, fedt, kulhydrater, protein, fibre)
+- Rediger og slet eksisterende varer (kun manuelle)
+- API-varer vises men kan ikke redigeres
 
 ---
 
-## 3. Automatisk indkoebsliste-synkronisering fra madplan
+## 2. Database-aendringer (products-tabellen)
 
-Naar en opskrift vaelges i madplanen (`MealPlanPage.tsx`), tilfoejs alle opskriftens ingredienser automatisk til indkoebslisten. Naar en opskrift fjernes, fjernes de tilhoerende varer igen -- med respekt for reglerne:
+Nye kolonner paa `products`:
 
-- Varer med `source_type: "recipe"` og matchende `recipe_id` tilfoejs/fjernes
-- Hvis samme produkt allerede findes manuelt, reguleres kun antallet op/ned
-- Manuelle varer (`source_type: "manual"`) slettes aldrig automatisk
-- Hvis en vare har baade manuel og opskrift-antal, reduceres kun opskrift-delen
+| Kolonne | Type | Beskrivelse |
+|---------|------|-------------|
+| description | text | Beskrivelse |
+| size_label | text | Maengdebetegnelse, f.eks. "1 L", "500 g" |
+| price | numeric | Pris i kroner (f.eks. 11.95) |
+| is_favorite | boolean | Favoritvare |
+| calories_per_100g | numeric | Kalorier pr. 100g |
+| fat_per_100g | numeric | Fedt pr. 100g |
+| carbs_per_100g | numeric | Kulhydrater pr. 100g |
+| protein_per_100g | numeric | Protein pr. 100g |
+| fiber_per_100g | numeric | Fibre pr. 100g |
+
+Nye kolonner paa `orders`:
+
+| Kolonne | Type | Beskrivelse |
+|---------|------|-------------|
+| total_price | numeric | Samlet pris for ordren |
+
+Nye kolonner paa `order_lines`:
+
+| Kolonne | Type | Beskrivelse |
+|---------|------|-------------|
+| price | numeric | Pris pr. vare |
+| size_label | text | Maengdebetegnelse |
+
+Ny kolonne paa `shopping_list_items`:
+
+| Kolonne | Type | Beskrivelse |
+|---------|------|-------------|
+| is_ordered | boolean | Markerer at varen er bestilt |
+
+---
+
+## 3. Tilfoej vare-popup redesign
+
+"Plus"-knappen aabner en soegnings-popup med:
+
+- Soegefelt med live-filtrering
+- Favoritfilter-knap (toggle) der kun viser favoritvarer
+- Naar soegefeltet er tomt: vis de 6 mest koebte varer (baseret paa antal gange de optaeder i `order_lines`)
+- Naar en vare vaelges: angiv antal (f.eks. "2") og varen tilfoejes som "2 x Maelk 1 L"
+
+---
+
+## 4. Visningslogik: Grupperet pr. produkt med expand
+
+Indkoebslistens visning aendres saa varer med samme `product_id` samles paa en linje:
+
+- Hovedlinje viser: "2 x Maelk 1 L" (summen af alle sources)
+- Hvis varen har baade "manuel" og "opskrift" kilder, vises en expand-knap
+- Ved expand ses: "1 x Maelk 1 L - Manuel" og "1 x Maelk 1 L - Opskrift (Pandekager)"
+- Sletteknappen fjerner kun den specifikke kilde-linje
+- Naar en opskrift fjernes fra madplanen kan kun "opskrift"-linjer slettes
+
+---
+
+## 5. Totalpris-visning
+
+Til venstre for tandhjulet vises en totalpris for alle varer paa indkoebslisten:
+
+- Beregnes som sum af (antal x pris) for alle ikke-afkrydsede varer
+- Vises som "Total: 1.205,95 kr"
+- Opdateres live naar varer tilfoejes/fjernes
+
+---
+
+## 6. Bestil-knap: PDF-generering og ordrehaandtering
+
+Naar "Bestil" klikkes:
+
+1. Opret en ordre i `orders` med `total_price` og `total_items`
+2. Opret `order_lines` med pris og stoerrelsesbetegnelse
+3. Marker alle `shopping_list_items` med `is_ordered = true`
+4. Slet alle varer fra indkoebslisten (toem listen)
+5. Gem PDF-data som base64 i en ny kolonne paa `orders` (`pdf_data text`)
+   - PDF'en genereres client-side med simpel HTML-til-canvas metode eller en letvaegtsbibliothek
+   - Indhold: Bestillingsdato, samlet pris, varer grupperet pr. kategori med antal, stoerrelse og pris
+
+**Madplan-beskyttelse**: Naar `is_ordered` saettes til true inden sletning, opdateres synkroniseringslogikken i `MealPlanPage.tsx` saa den tjekker: "Er varerne allerede bestilt?" Hvis ja, fjernes de IKKE fra indkoebslisten naar en opskrift slettes fra madplanen.
+
+---
+
+## 7. Ordre-viewet opdateres
+
+`OrdersPage.tsx` aendres til:
+
+- Kolonner: Bestillingsdato, Samlet pris, Aaben (PDF-knap)
+- PDF-knappen aabner PDF'en i et nyt vindue/dialog (base64 decoded)
+- Den nuvaerende detail-popup fjernes til fordel for PDF-visning
 
 ---
 
 ## Teknisk implementering
 
-### Database
-Ingen schema-aendringer noevendige -- alle tabeller og relationer eksisterer allerede:
-- `products` (varekatalog med `category_id`, `is_manual`)
-- `recipe_ingredients` (med `product_id`, `recipe_id`, `quantity`, `unit`)
-- `shopping_list_items` (med `product_id`, `recipe_id`, `source_type`, `category_id`)
+### Database migration
+En migration der tilfojer alle nye kolonner til `products`, `orders`, `order_lines` og `shopping_list_items`, samt `pdf_data` paa `orders`.
 
 ### Filer der aendres
 
-**`src/pages/RecipesPage.tsx`**
-- Tilfoej ingrediens-sektion i opskrift-editoren
-- Hent og vis `recipe_ingredients` for den valgte opskrift
-- Soeg i `products`-tabellen for at linke ingredienser
-- Ved gem: indsaet/opdater/slet ingredienser i `recipe_ingredients`
-- Ved klon: kopier ingredienserne til den nye opskrift
-
-**`src/pages/ShoppingListPage.tsx`**
-- Erstat "Tilfoej vare"-dialogen med en varekatalog-soege-popup
-- Hent `products` med `item_categories` join
-- Vis produkter med soegning, kategorivisning og API/Manuel badge
-- Tilfoej "Opret ny vare"-funktion i samme popup
-- Ved valg af produkt: indsaet i `shopping_list_items` med `product_id` og `category_id` fra produktet
+**`src/pages/ShoppingListPage.tsx`** (stoerste aendring)
+- Ny admin-dialog med tabs (Kategorier + Varer)
+- Ny tilfoej-popup med favorit-filter og "mest koebte" logik
+- Ny visningslogik med produkt-gruppering og expand
+- Totalpris-beregning
+- Bestil-logik med PDF-generering og is_ordered flag
 
 **`src/pages/MealPlanPage.tsx`**
-- Naar `setMealPlan` mutationen koerer:
-  - Hent ingredienser for den valgte opskrift (`recipe_ingredients` med `products` join)
-  - For hver ingrediens: tjek om produktet allerede er paa listen
-    - Hvis ja med `source_type: "recipe"`: opdater antal
-    - Hvis nej: indsaet ny linje med `source_type: "recipe"`, `recipe_id`, `product_id`
-  - Naar en opskrift fjernes: find alle `shopping_list_items` med matchende `recipe_id`
-    - Slet dem, medmindre der ogsaa er en manuel registrering af samme produkt
+- Opdater `syncShoppingListForRecipe("remove")` til at tjekke `is_ordered` foer sletning
 
+**`src/pages/OrdersPage.tsx`**
+- Ny tabelstruktur med pris og PDF-knap
+- PDF-visning i dialog eller nyt vindue
+
+### Ny dependency
+- `jspdf` til PDF-generering client-side (letvaegtsbibliothek)
