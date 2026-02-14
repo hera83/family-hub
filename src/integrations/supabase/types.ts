@@ -378,6 +378,8 @@ export type Database = {
           product_name: string
           quantity: number
           recipe_id: string | null
+          recipe_qty: number | null
+          recipe_unit: string | null
           source_type: string
           unit: string | null
         }
@@ -391,6 +393,8 @@ export type Database = {
           product_name: string
           quantity?: number
           recipe_id?: string | null
+          recipe_qty?: number | null
+          recipe_unit?: string | null
           source_type?: string
           unit?: string | null
         }
@@ -404,6 +408,8 @@ export type Database = {
           product_name?: string
           quantity?: number
           recipe_id?: string | null
+          recipe_qty?: number | null
+          recipe_unit?: string | null
           source_type?: string
           unit?: string | null
         }

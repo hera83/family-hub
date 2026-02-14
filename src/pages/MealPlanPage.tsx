@@ -85,6 +85,8 @@ async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remo
           unit: ing.products?.unit || ing.unit || "stk",
           source_type: "recipe",
           recipe_id: recipeId,
+          recipe_qty: ing.quantity,
+          recipe_unit: ing.unit || "stk",
         });
       }
     }
