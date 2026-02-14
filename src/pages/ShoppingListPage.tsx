@@ -309,7 +309,29 @@ export default function ShoppingListPage() {
       const unchecked = items.filter((i: any) => !i.is_checked);
       if (unchecked.length === 0) return;
 
-      const orderTotal = totalPrice;
+      // Aggregate by product_id
+      const aggMap: Record<string, { product_name: string; totalQty: number; unit: string; category_name: string; price: number | null; size_label: string; sortOrder: number }> = {};
+      unchecked.forEach((item: any) => {
+        const key = item.product_id || `manual_${item.id}`;
+        const prod = products.find((p: any) => p.id === item.product_id);
+        const catName = item.item_categories?.name || "Uden kategori";
+        const sortOrder = item.item_categories?.sort_order ?? 999;
+        if (!aggMap[key]) {
+          aggMap[key] = {
+            product_name: item.product_name,
+            totalQty: 0,
+            unit: item.unit || "stk",
+            category_name: catName,
+            price: prod?.price ?? null,
+            size_label: prod?.size_label || "",
+            sortOrder,
+          };
+        }
+        aggMap[key].totalQty += Number(item.quantity);
+      });
+
+      const aggregated = Object.values(aggMap);
+      const orderTotal = aggregated.reduce((sum, a) => sum + (a.price ? a.totalQty * Number(a.price) : 0), 0);
 
       // Generate PDF
       const doc = new jsPDF();
@@ -321,61 +343,75 @@ export default function ShoppingListPage() {
       doc.text(`Samlet pris: ${orderTotal.toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr`, 14, 34);
 
       let y = 44;
-      const cats: Record<string, any[]> = {};
-      unchecked.forEach((item: any) => {
-        const cat = item.item_categories?.name || "Uden kategori";
-        if (!cats[cat]) cats[cat] = [];
-        cats[cat].push(item);
+      // Group aggregated items by category
+      const catGroups: Record<string, typeof aggregated> = {};
+      aggregated.forEach((a) => {
+        if (!catGroups[a.category_name]) catGroups[a.category_name] = [];
+        catGroups[a.category_name].push(a);
       });
 
-      Object.entries(cats).sort().forEach(([catName, catItems]) => {
-        if (y > 270) { doc.addPage(); y = 20; }
+      // PDF header row
+      const printHeader = (yPos: number) => {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text("Antal", 18, yPos);
+        doc.text("Vare", 40, yPos);
+        doc.text("Enhedspris", 120, yPos);
+        doc.text("Total", 160, yPos);
+        doc.setFont("helvetica", "normal");
+        return yPos + 5;
+      };
+
+      Object.entries(catGroups).sort((a, b) => {
+        const sA = aggregated.find((x) => x.category_name === a[0])?.sortOrder ?? 999;
+        const sB = aggregated.find((x) => x.category_name === b[0])?.sortOrder ?? 999;
+        return sA - sB;
+      }).forEach(([catName, catItems]) => {
+        if (y > 260) { doc.addPage(); y = 20; }
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
         doc.text(catName, 14, y);
         y += 6;
+        y = printHeader(y);
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        catItems.forEach((item: any) => {
+        catItems.forEach((a) => {
           if (y > 280) { doc.addPage(); y = 20; }
-          const prod = products.find((p: any) => p.id === item.product_id);
-          const sizeLabel = prod?.size_label || "";
-          const price = prod?.price ? `${Number(prod.price).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr` : "";
-          const label = `${item.quantity} x ${item.product_name}${sizeLabel ? " " + sizeLabel : ""}`;
-          doc.text(label, 18, y);
-          if (price) doc.text(price, 160, y);
+          const label = `${a.product_name}${a.size_label ? " " + a.size_label : ""}`;
+          const unitPrice = a.price ? `${Number(a.price).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr` : "";
+          const lineTotal = a.price ? `${(a.totalQty * Number(a.price)).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr` : "";
+          doc.text(`${a.totalQty}`, 18, y);
+          doc.text(label, 40, y);
+          if (unitPrice) doc.text(unitPrice, 120, y);
+          if (lineTotal) doc.text(lineTotal, 160, y);
           y += 5;
         });
         y += 4;
       });
 
       const rawPdf = doc.output("datauristring");
-      // Strip the filename segment that jsPDF adds (browsers can't handle it in iframes)
       const pdfBase64 = rawPdf.replace(/;filename=[^;]*/, "");
 
       // Create order
       const { data: order } = await supabase.from("orders").insert({
         status: "completed",
-        total_items: unchecked.length,
+        total_items: aggregated.reduce((s, a) => s + a.totalQty, 0),
         total_price: orderTotal,
         pdf_data: pdfBase64,
       }).select().single();
 
       if (!order) return;
 
-      // Create order lines
-      const lines = unchecked.map((item: any) => {
-        const prod = products.find((p: any) => p.id === item.product_id);
-        return {
-          order_id: order.id,
-          product_name: item.product_name,
-          quantity: item.quantity,
-          unit: item.unit,
-          category_name: item.item_categories?.name || null,
-          price: prod?.price ?? null,
-          size_label: prod?.size_label ?? null,
-        };
-      });
+      // Create aggregated order lines
+      const lines = aggregated.map((a) => ({
+        order_id: order.id,
+        product_name: a.product_name,
+        quantity: a.totalQty,
+        unit: a.unit,
+        category_name: a.category_name,
+        price: a.price,
+        size_label: a.size_label || null,
+      }));
       await supabase.from("order_lines").insert(lines);
 
       // Mark items as ordered then delete
@@ -482,7 +518,8 @@ export default function ShoppingListPage() {
                       </span>
                       {pg.price && (
                         <span className="text-xs text-muted-foreground ml-2">
-                          {(pg.totalQty * Number(pg.price)).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr
+                          á {Number(pg.price).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr
+                          {pg.totalQty > 1 && `, total ${(pg.totalQty * Number(pg.price)).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr`}
                         </span>
                       )}
                     </div>
