@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Delete, CornerDownLeft, Space, ChevronUp } from "lucide-react";
+import { Delete, CornerDownLeft, Space, ChevronUp, ChevronDown } from "lucide-react";
 
 type KeyboardLayout = "text" | "numeric";
 
@@ -8,14 +8,14 @@ const TEXT_ROWS_LOWER = [
   ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å"],
   ["a", "s", "d", "f", "g", "h", "j", "k", "l", "æ", "ø"],
   ["SHIFT", "z", "x", "c", "v", "b", "n", "m", "BACKSPACE"],
-  ["123", "SPACE", ".", ",", "ENTER"],
+  ["123", "SPACE", ".", ",", "MINIMIZE"],
 ];
 
 const TEXT_ROWS_UPPER = [
   ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "Å"],
   ["A", "S", "D", "F", "G", "H", "J", "K", "L", "Æ", "Ø"],
   ["SHIFT", "Z", "X", "C", "V", "B", "N", "M", "BACKSPACE"],
-  ["123", "SPACE", ".", ",", "ENTER"],
+  ["123", "SPACE", ".", ",", "MINIMIZE"],
 ];
 
 const NUMERIC_ROWS = [
@@ -23,7 +23,7 @@ const NUMERIC_ROWS = [
   ["4", "5", "6"],
   ["7", "8", "9"],
   [".", "0", "BACKSPACE"],
-  ["ABC", "-", "ENTER"],
+  ["ABC", "-", "MINIMIZE"],
 ];
 
 function isNumericInput(el: HTMLElement | null): boolean {
@@ -41,6 +41,7 @@ function isSelectElement(el: HTMLElement | null): boolean {
 
 export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const [visible, setVisible] = useState(false);
+  const [minimized, setMinimized] = useState(false);
   const [layout, setLayout] = useState<KeyboardLayout>("text");
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -52,18 +53,18 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     const onFocusIn = (e: FocusEvent) => {
       const el = e.target as HTMLElement;
       if (isSelectElement(el)) return;
+      if (keyboardRef.current?.contains(el)) return;
       if (
         el instanceof HTMLInputElement ||
         el instanceof HTMLTextAreaElement
       ) {
-        // Skip non-text inputs
         if (el instanceof HTMLInputElement && ["checkbox", "radio", "hidden", "file", "submit", "button", "reset", "range", "color"].includes(el.type)) return;
         activeRef.current = el;
         setLayout(isNumericInput(el) ? "numeric" : "text");
         setShifted(false);
         setVisible(true);
+        setMinimized(false);
 
-        // Scroll element into view above keyboard
         setTimeout(() => {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
         }, 100);
@@ -71,7 +72,6 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     };
 
     const onFocusOut = (e: FocusEvent) => {
-      // Delay to check if focus moved to keyboard itself
       setTimeout(() => {
         const active = document.activeElement;
         if (keyboardRef.current?.contains(active as Node)) return;
@@ -79,11 +79,12 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
           active instanceof HTMLInputElement ||
           active instanceof HTMLTextAreaElement
         ) {
-          return; // Focus moved to another input
+          return;
         }
         setVisible(false);
+        setMinimized(false);
         activeRef.current = null;
-      }, 150);
+      }, 200);
     };
 
     document.addEventListener("focusin", onFocusIn);
@@ -122,11 +123,9 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.setSelectionRange(start, start);
       }
-    } else if (key === "ENTER") {
-      setVisible(false);
-      el.blur();
-      // Trigger change event
-      el.dispatchEvent(new Event("change", { bubbles: true }));
+    } else if (key === "MINIMIZE") {
+      setMinimized(true);
+      return;
     } else if (key === "SPACE") {
       const newVal = el.value.slice(0, start) + " " + el.value.slice(end);
       nativeInputValueSetter?.call(el, newVal);
@@ -152,6 +151,31 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
 
   if (!enabled || !visible) return null;
 
+  // Minimized state: show a small expand bar
+  if (minimized) {
+    return (
+      <div
+        ref={keyboardRef}
+        className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 flex justify-center"
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          className="min-h-[44px] px-6 gap-2"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            setMinimized(false);
+          }}
+          tabIndex={-1}
+          type="button"
+        >
+          <ChevronUp className="h-4 w-4" />
+          Vis tastatur
+        </Button>
+      </div>
+    );
+  }
+
   const rows = layout === "numeric" ? NUMERIC_ROWS : shifted ? TEXT_ROWS_UPPER : TEXT_ROWS_LOWER;
 
   const renderKey = (key: string) => {
@@ -161,8 +185,8 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     if (key === "BACKSPACE") {
       content = <Delete className="h-5 w-5" />;
       className = "min-h-[48px] min-w-[56px] px-3";
-    } else if (key === "ENTER") {
-      content = <CornerDownLeft className="h-5 w-5" />;
+    } else if (key === "MINIMIZE") {
+      content = <ChevronDown className="h-5 w-5" />;
       className = "min-h-[48px] min-w-[56px] px-3";
     } else if (key === "SPACE") {
       content = <Space className="h-5 w-5" />;
@@ -180,7 +204,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         variant={key === "SHIFT" && shifted ? "default" : "outline"}
         className={className}
         onPointerDown={(e) => {
-          e.preventDefault(); // Prevent focus steal
+          e.preventDefault(); // Prevent focus steal from input
           handleKey(key);
         }}
         tabIndex={-1}
