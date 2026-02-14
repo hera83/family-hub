@@ -3,7 +3,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useTouchMode } from "@/hooks/useTouchMode";
 import { useTheme } from "@/hooks/useTheme";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Keyboard, KeyboardOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VirtualKeyboard } from "@/components/VirtualKeyboard";
 
@@ -12,7 +12,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const { isTouchMode, isDimmed, resetTimer } = useTouchMode();
+  const { isTouchMode, isDimmed, resetTimer, toggleTouchMode } = useTouchMode();
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -25,9 +25,14 @@ export function AppLayout({ children }: AppLayoutProps) {
               <SidebarTrigger />
               <h1 className="text-lg font-semibold text-foreground">Familiens Assistent</h1>
             </div>
-            <Button variant="ghost" size="icon" onClick={toggleTheme} className="min-h-[44px] min-w-[44px]">
-              {theme === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={toggleTouchMode} className="min-h-[44px] min-w-[44px]" title={isTouchMode ? "Sluk skærmtastatur" : "Tænd skærmtastatur"}>
+                {isTouchMode ? <Keyboard className="h-5 w-5" /> : <KeyboardOff className="h-5 w-5" />}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={toggleTheme} className="min-h-[44px] min-w-[44px]">
+                {theme === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+              </Button>
+            </div>
           </header>
           <main className="flex-1 p-4 md:p-6 overflow-auto">
             {children}

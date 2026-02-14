@@ -1,19 +1,39 @@
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
 
 const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+const COOKIE_NAME = "touch_mode";
+
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+  return match ? match[2] : null;
+}
+
+function setCookie(name: string, value: string) {
+  // No expiry = effectively permanent (max-age ~68 years)
+  document.cookie = `${name}=${value};path=/;max-age=2147483647;SameSite=Lax`;
+}
 
 export function useTouchMode() {
-  const [searchParams] = useSearchParams();
-  const isTouchMode = searchParams.get("touch") === "true";
+  const [isTouchMode, setIsTouchMode] = useState(() => getCookie(COOKIE_NAME) === "true");
   const [isDimmed, setIsDimmed] = useState(false);
+
+  const toggleTouchMode = useCallback(() => {
+    setIsTouchMode((prev) => {
+      const next = !prev;
+      setCookie(COOKIE_NAME, String(next));
+      return next;
+    });
+  }, []);
 
   const resetTimer = useCallback(() => {
     setIsDimmed(false);
   }, []);
 
   useEffect(() => {
-    if (!isTouchMode) return;
+    if (!isTouchMode) {
+      document.documentElement.classList.remove("touch-mode");
+      return;
+    }
     document.documentElement.classList.add("touch-mode");
     return () => document.documentElement.classList.remove("touch-mode");
   }, [isTouchMode]);
@@ -39,5 +59,5 @@ export function useTouchMode() {
     };
   }, [isTouchMode]);
 
-  return { isTouchMode, isDimmed, resetTimer };
+  return { isTouchMode, isDimmed, resetTimer, toggleTouchMode };
 }
