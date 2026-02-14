@@ -1,0 +1,208 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Delete, CornerDownLeft, Space, ChevronUp } from "lucide-react";
+
+type KeyboardLayout = "text" | "numeric";
+
+const TEXT_ROWS_LOWER = [
+  ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å"],
+  ["a", "s", "d", "f", "g", "h", "j", "k", "l", "æ", "ø"],
+  ["SHIFT", "z", "x", "c", "v", "b", "n", "m", "BACKSPACE"],
+  ["123", "SPACE", ".", ",", "ENTER"],
+];
+
+const TEXT_ROWS_UPPER = [
+  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "Å"],
+  ["A", "S", "D", "F", "G", "H", "J", "K", "L", "Æ", "Ø"],
+  ["SHIFT", "Z", "X", "C", "V", "B", "N", "M", "BACKSPACE"],
+  ["123", "SPACE", ".", ",", "ENTER"],
+];
+
+const NUMERIC_ROWS = [
+  ["1", "2", "3"],
+  ["4", "5", "6"],
+  ["7", "8", "9"],
+  [".", "0", "BACKSPACE"],
+  ["ABC", "-", "ENTER"],
+];
+
+function isNumericInput(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  if (el instanceof HTMLInputElement) {
+    return el.type === "number" || el.inputMode === "numeric" || el.inputMode === "decimal";
+  }
+  return false;
+}
+
+function isSelectElement(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  return el.tagName === "SELECT";
+}
+
+export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
+  const [visible, setVisible] = useState(false);
+  const [layout, setLayout] = useState<KeyboardLayout>("text");
+  const [shifted, setShifted] = useState(false);
+  const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const keyboardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const onFocusIn = (e: FocusEvent) => {
+      const el = e.target as HTMLElement;
+      if (isSelectElement(el)) return;
+      if (
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement
+      ) {
+        // Skip non-text inputs
+        if (el instanceof HTMLInputElement && ["checkbox", "radio", "hidden", "file", "submit", "button", "reset", "range", "color"].includes(el.type)) return;
+        activeRef.current = el;
+        setLayout(isNumericInput(el) ? "numeric" : "text");
+        setShifted(false);
+        setVisible(true);
+
+        // Scroll element into view above keyboard
+        setTimeout(() => {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 100);
+      }
+    };
+
+    const onFocusOut = (e: FocusEvent) => {
+      // Delay to check if focus moved to keyboard itself
+      setTimeout(() => {
+        const active = document.activeElement;
+        if (keyboardRef.current?.contains(active as Node)) return;
+        if (
+          active instanceof HTMLInputElement ||
+          active instanceof HTMLTextAreaElement
+        ) {
+          return; // Focus moved to another input
+        }
+        setVisible(false);
+        activeRef.current = null;
+      }, 150);
+    };
+
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+    };
+  }, [enabled]);
+
+  const handleKey = useCallback((key: string) => {
+    const el = activeRef.current;
+    if (!el) return;
+
+    // Re-focus the input
+    el.focus();
+
+    const nativeInputValueSetter =
+      el instanceof HTMLTextAreaElement
+        ? Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
+        : Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+
+    if (key === "BACKSPACE") {
+      if (start === end && start > 0) {
+        const newVal = el.value.slice(0, start - 1) + el.value.slice(end);
+        nativeInputValueSetter?.call(el, newVal);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.setSelectionRange(start - 1, start - 1);
+      } else if (start !== end) {
+        const newVal = el.value.slice(0, start) + el.value.slice(end);
+        nativeInputValueSetter?.call(el, newVal);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.setSelectionRange(start, start);
+      }
+    } else if (key === "ENTER") {
+      setVisible(false);
+      el.blur();
+      // Trigger change event
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    } else if (key === "SPACE") {
+      const newVal = el.value.slice(0, start) + " " + el.value.slice(end);
+      nativeInputValueSetter?.call(el, newVal);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.setSelectionRange(start + 1, start + 1);
+    } else if (key === "SHIFT") {
+      setShifted((s) => !s);
+      return;
+    } else if (key === "123") {
+      setLayout("numeric");
+      return;
+    } else if (key === "ABC") {
+      setLayout("text");
+      return;
+    } else {
+      const newVal = el.value.slice(0, start) + key + el.value.slice(end);
+      nativeInputValueSetter?.call(el, newVal);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.setSelectionRange(start + 1, start + 1);
+      if (shifted) setShifted(false);
+    }
+  }, [shifted]);
+
+  if (!enabled || !visible) return null;
+
+  const rows = layout === "numeric" ? NUMERIC_ROWS : shifted ? TEXT_ROWS_UPPER : TEXT_ROWS_LOWER;
+
+  const renderKey = (key: string) => {
+    let content: React.ReactNode = key;
+    let className = "min-h-[48px] min-w-[36px] text-base font-medium px-2 flex-1";
+
+    if (key === "BACKSPACE") {
+      content = <Delete className="h-5 w-5" />;
+      className = "min-h-[48px] min-w-[56px] px-3";
+    } else if (key === "ENTER") {
+      content = <CornerDownLeft className="h-5 w-5" />;
+      className = "min-h-[48px] min-w-[56px] px-3";
+    } else if (key === "SPACE") {
+      content = <Space className="h-5 w-5" />;
+      className = "min-h-[48px] flex-[4] px-3";
+    } else if (key === "SHIFT") {
+      content = <ChevronUp className={`h-5 w-5 ${shifted ? "text-primary" : ""}`} />;
+      className = "min-h-[48px] min-w-[56px] px-3";
+    } else if (key === "123" || key === "ABC") {
+      className = "min-h-[48px] min-w-[56px] px-3 text-sm font-semibold";
+    }
+
+    return (
+      <Button
+        key={key}
+        variant={key === "SHIFT" && shifted ? "default" : "outline"}
+        className={className}
+        onPointerDown={(e) => {
+          e.preventDefault(); // Prevent focus steal
+          handleKey(key);
+        }}
+        tabIndex={-1}
+        type="button"
+      >
+        {content}
+      </Button>
+    );
+  };
+
+  return (
+    <div
+      ref={keyboardRef}
+      className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 safe-area-bottom animate-in slide-in-from-bottom duration-200"
+    >
+      <div className={`max-w-2xl mx-auto space-y-1 ${layout === "numeric" ? "max-w-xs" : ""}`}>
+        {rows.map((row, i) => (
+          <div key={i} className="flex gap-1 justify-center">
+            {row.map((key) => renderKey(key))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
