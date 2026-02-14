@@ -32,7 +32,7 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
   const handleOutsideEvent = (e: Event) => {
-    const target = e.target as Element | null;
+    const target = (e as any).detail?.originalEvent?.target as Element | null;
     if (target?.closest?.("[data-virtual-keyboard]")) {
       e.preventDefault();
     }
