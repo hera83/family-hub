@@ -12,17 +12,57 @@ import { da } from "date-fns/locale";
 const DAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
 const CATEGORIES = ["Alle", "Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 
+// Unit conversion: normalize quantity to a base unit (g for weight, ml for volume)
+function normalizeToBase(qty: number, unit: string): { value: number; type: "weight" | "volume" | "unknown" } {
+  const u = unit.toLowerCase().trim();
+  if (u === "kg") return { value: qty * 1000, type: "weight" };
+  if (u === "g") return { value: qty, type: "weight" };
+  if (u === "l") return { value: qty * 1000, type: "volume" };
+  if (u === "dl") return { value: qty * 100, type: "volume" };
+  if (u === "cl") return { value: qty * 10, type: "volume" };
+  if (u === "ml") return { value: qty, type: "volume" };
+  return { value: qty, type: "unknown" };
+}
+
+function convertToPackages(recipeQty: number, recipeUnit: string, productSizeLabel: string | null, productUnit: string | null): number {
+  if (!productSizeLabel || !productUnit) return recipeQty;
+
+  // Parse numeric value from size_label (e.g. "500" from "500 g" or just "500")
+  const sizeMatch = productSizeLabel.match(/(\d+(?:[.,]\d+)?)/);
+  if (!sizeMatch) return recipeQty;
+  const productSize = parseFloat(sizeMatch[1].replace(",", "."));
+  if (productSize <= 0) return recipeQty;
+
+  const recipe = normalizeToBase(recipeQty, recipeUnit);
+  const product = normalizeToBase(productSize, productUnit);
+
+  // Only convert if both are the same type (weight or volume)
+  if (recipe.type === "unknown" || product.type === "unknown" || recipe.type !== product.type) {
+    return recipeQty;
+  }
+
+  return Math.ceil(recipe.value / product.value);
+}
+
 async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remove") {
   // Fetch recipe ingredients with product info
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
-    .select("*, products(name, category_id, unit)")
+    .select("*, products(name, category_id, unit, size_label)")
     .eq("recipe_id", recipeId);
 
   if (!ingredients || ingredients.length === 0) return;
 
   if (action === "add") {
     for (const ing of ingredients) {
+      // Calculate package quantity
+      const qty = convertToPackages(
+        ing.quantity,
+        ing.unit || "stk",
+        ing.products?.size_label || null,
+        ing.products?.unit || null
+      );
+
       // Check if this product is already on the shopping list from this recipe
       const { data: existing } = await supabase
         .from("shopping_list_items")
@@ -33,17 +73,16 @@ async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remo
         .maybeSingle();
 
       if (existing) {
-        // Update quantity
         await supabase.from("shopping_list_items")
-          .update({ quantity: existing.quantity + ing.quantity })
+          .update({ quantity: existing.quantity + qty })
           .eq("id", existing.id);
       } else {
         await supabase.from("shopping_list_items").insert({
           product_name: ing.products?.name || ing.name || "Ukendt",
           product_id: ing.product_id,
           category_id: ing.products?.category_id || null,
-          quantity: ing.quantity,
-          unit: ing.unit || ing.products?.unit || "stk",
+          quantity: qty,
+          unit: ing.products?.unit || ing.unit || "stk",
           source_type: "recipe",
           recipe_id: recipeId,
         });
