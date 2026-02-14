@@ -1,34 +1,41 @@
 
 
-# Fix: Virtuelt tastatur lukker popup/dialog
+# Fix: Virtuelt tastatur lukker stadig popup/dialog
 
 ## Problem
 
-Radix UI Dialog har en indbygget "klik udenfor = luk"-mekanisme (`onPointerDownOutside`). Det virtuelle tastatur er placeret udenfor dialogens DOM-element, saa naar brugeren trykker paa en tast, opfatter Radix det som et "klik udenfor" og lukker dialogen. Naar dialogen lukker, forsvinder inputfeltet, og tastaturet skjuler sig ogsaa.
+Den nuvaerende fix virker ikke fordi Radix UI's `onPointerDownOutside` og `onInteractOutside` sender et **special event** hvor den faktiske DOM-target (dvs. tastaturtasten der blev trykket paa) ligger paa `event.detail.originalEvent.target` - ikke paa `event.target` som koden tjekker nu. Derfor finder `closest('[data-virtual-keyboard]')` aldrig tastaturet, og dialogen lukker alligevel.
 
 ## Loesning
 
-Tilfoej et `data-virtual-keyboard` attribut til tastaturets rod-element, og opdater `DialogContent`-komponenten til at ignorere pointer-events der rammer det virtuelle tastatur.
+Ret `handleOutsideEvent` i `src/components/ui/dialog.tsx` til at laese target fra det rigtige sted.
 
-### Fil 1: `src/components/VirtualKeyboard.tsx`
+### Aendring i `src/components/ui/dialog.tsx`
 
-Tilfoej `data-virtual-keyboard="true"` paa tastaturets ydre `<div>` (baade i normal- og minimeret tilstand). Dette er en simpel markering saa andre komponenter kan genkende tastaturet.
-
-### Fil 2: `src/components/ui/dialog.tsx`
-
-Opdater `DialogContent` til at haandtere `onPointerDownOutside` og `onInteractOutside`. Hvis eventet stammer fra et element inde i det virtuelle tastatur (tjek via `data-virtual-keyboard`), kaldes `event.preventDefault()` for at forhindre dialogen i at lukke.
+Opdater funktionen `handleOutsideEvent` til at tjekke baade `e.target` og `e.detail.originalEvent.target`:
 
 ```text
-Logik:
-1. Modtag onPointerDownOutside event
-2. Tjek om event.target er inde i [data-virtual-keyboard]
-3. Hvis ja: preventDefault() - dialogen forbliver aaben
-4. Hvis nej: normal opfoersel (dialogen lukker)
+Foer (virker ikke):
+  const target = e.target as Element | null;
+
+Efter (virker):
+  const target = (e as any).detail?.originalEvent?.target as Element | null;
 ```
 
-### Resultat
+Den fulde funktion bliver:
 
-- Tastaturet kan bruges inde i popups/dialoger uden at lukke dem
-- Normal "klik udenfor lukker dialog"-opfoersel bevares for alle andre elementer
-- Loesningen er generisk og virker for alle dialoger i appen
+```typescript
+const handleOutsideEvent = (e: Event) => {
+  const target = (e as any).detail?.originalEvent?.target as Element | null;
+  if (target?.closest?.("[data-virtual-keyboard]")) {
+    e.preventDefault();
+  }
+};
+```
+
+## Teknisk forklaring
+
+Radix UI wrapper DOM pointer-events i et custom event-objekt. Det originale klik-target (tastaturtasten) gemmes under `event.detail.originalEvent.target`. Ved at laese derfra kan vi korrekt identificere at klikket kom fra det virtuelle tastatur og forhindre dialogen i at lukke.
+
+Ingen andre filer behoever aendringer - `data-virtual-keyboard="true"` attributten paa `VirtualKeyboard` er allerede korrekt sat op.
 
