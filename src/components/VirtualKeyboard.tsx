@@ -156,6 +156,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     return (
       <div
         ref={keyboardRef}
+        data-virtual-keyboard="true"
         className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 flex justify-center"
       >
         <Button
@@ -218,6 +219,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   return (
     <div
       ref={keyboardRef}
+      data-virtual-keyboard="true"
       className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 safe-area-bottom animate-in slide-in-from-bottom duration-200"
     >
       <div className={`max-w-2xl mx-auto space-y-1 ${layout === "numeric" ? "max-w-xs" : ""}`}>
