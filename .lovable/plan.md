@@ -1,141 +1,68 @@
 
-# Indkoebsliste-rettelser: Administration, Varekatalog, Bestilling og Visningslogik
 
-Seks sammenhaegende aendringer til indkoebslisten, ordresystemet og madplan-synkroniseringen.
+# Fejlrettelser: Fokustab, PDF-visning og Mængdeberegning
 
----
-
-## 1. Tandhjul bliver til "Kategorier og Varer" administration
-
-Det nuvaerende kategori-admin-dialog udvides til en dialog med to tabs:
-
-**Tab 1: Kategorier** (beholdes som nu)
-- Opret, rediger, slet kategorier med soegefelt oeverst
-
-**Tab 2: Varer**
-- Liste over alle varer fra `products`-tabellen med soegefelt
-- Opret ny vare med felter: Varenavn, Billede URL, Beskrivelse, Enhed og maengde (f.eks. "1 L"), Pris (kroner og oere, f.eks. 11,95), Kategori, Favoritvare-markering, Naeringsindhold pr. 100g (valgfrit: kalorier, fedt, kulhydrater, protein, fibre)
-- Rediger og slet eksisterende varer (kun manuelle)
-- API-varer vises men kan ikke redigeres
+Tre uafhængige fejl der skal rettes.
 
 ---
 
-## 2. Database-aendringer (products-tabellen)
+## 1. Fokustab i produktformularen
 
-Nye kolonner paa `products`:
+**Problem**: `ProductForm`-komponenten er defineret som en funktion INDE i `ShoppingListPage`-komponenten (linje 387-424). Hver gang React gengiver siden (f.eks. ved tastetryk), oprettes en ny komponent-reference, og React mountes den forfra -- hvilket fjerner fokus fra inputfeltet.
 
-| Kolonne | Type | Beskrivelse |
-|---------|------|-------------|
-| description | text | Beskrivelse |
-| size_label | text | Maengdebetegnelse, f.eks. "1 L", "500 g" |
-| price | numeric | Pris i kroner (f.eks. 11.95) |
-| is_favorite | boolean | Favoritvare |
-| calories_per_100g | numeric | Kalorier pr. 100g |
-| fat_per_100g | numeric | Fedt pr. 100g |
-| carbs_per_100g | numeric | Kulhydrater pr. 100g |
-| protein_per_100g | numeric | Protein pr. 100g |
-| fiber_per_100g | numeric | Fibre pr. 100g |
+**Loesning**: Flyt `ProductForm` ud af `ShoppingListPage`-funktionen, saa den bliver en selvstaendig komponent defineret paa modul-niveau. Den modtager `values`, `onChange`, `categories` og `isEdit` som props.
 
-Nye kolonner paa `orders`:
-
-| Kolonne | Type | Beskrivelse |
-|---------|------|-------------|
-| total_price | numeric | Samlet pris for ordren |
-
-Nye kolonner paa `order_lines`:
-
-| Kolonne | Type | Beskrivelse |
-|---------|------|-------------|
-| price | numeric | Pris pr. vare |
-| size_label | text | Maengdebetegnelse |
-
-Ny kolonne paa `shopping_list_items`:
-
-| Kolonne | Type | Beskrivelse |
-|---------|------|-------------|
-| is_ordered | boolean | Markerer at varen er bestilt |
+**Fil**: `src/pages/ShoppingListPage.tsx`
 
 ---
 
-## 3. Tilfoej vare-popup redesign
+## 2. PDF-visningsfejl i Ordrer
 
-"Plus"-knappen aabner en soegnings-popup med:
+**Problem**: `jsPDF.output("datauristring")` returnerer en data-URI med et ekstra `filename`-segment: `data:application/pdf;filename=generated.pdf;base64,...`. Mange browsere kan ikke haandtere dette format i en iframe `src`.
 
-- Soegefelt med live-filtrering
-- Favoritfilter-knap (toggle) der kun viser favoritvarer
-- Naar soegefeltet er tomt: vis de 6 mest koebte varer (baseret paa antal gange de optaeder i `order_lines`)
-- Naar en vare vaelges: angiv antal (f.eks. "2") og varen tilfoejes som "2 x Maelk 1 L"
+**Loesning**: Brug `doc.output("datauristring")` men strip `filename`-segmentet inden det gemmes, saa det bliver en standard data-URI: `data:application/pdf;base64,...`. Alternativt brug `doc.output("blob")`, opret en blob-URL og gem den. Den enkleste fix er at rense strengen foer den gemmes.
 
----
+Derudover tilfoejes en `DialogDescription` til dialogen for at fjerne den `aria-describedby` advarsel der ogsaa ses i konsollen.
 
-## 4. Visningslogik: Grupperet pr. produkt med expand
-
-Indkoebslistens visning aendres saa varer med samme `product_id` samles paa en linje:
-
-- Hovedlinje viser: "2 x Maelk 1 L" (summen af alle sources)
-- Hvis varen har baade "manuel" og "opskrift" kilder, vises en expand-knap
-- Ved expand ses: "1 x Maelk 1 L - Manuel" og "1 x Maelk 1 L - Opskrift (Pandekager)"
-- Sletteknappen fjerner kun den specifikke kilde-linje
-- Naar en opskrift fjernes fra madplanen kan kun "opskrift"-linjer slettes
+**Fil**: `src/pages/ShoppingListPage.tsx` (placeOrder mutation), `src/pages/OrdersPage.tsx` (PDF-visning)
 
 ---
 
-## 5. Totalpris-visning
+## 3. Maengdeberegning: Pakker vs. Raavaegt
 
-Til venstre for tandhjulet vises en totalpris for alle varer paa indkoebslisten:
+**Problem**: Systemet gemmer opskriftens raavaegt (f.eks. 1 kg kyllingefars) direkte som `quantity` i indkoebslisten. Men produktet saelges i pakker af f.eks. 500 g. Resultatet er forkert visning som "500 x Killingefars af 500 g" i stedet for "2 x Killingefars 500 g".
 
-- Beregnes som sum af (antal x pris) for alle ikke-afkrydsede varer
-- Vises som "Total: 1.205,95 kr"
-- Opdateres live naar varer tilfoejes/fjernes
+**Loesning**: Indfoejer en konverteringslogik i `syncShoppingListForRecipe` (MealPlanPage.tsx) der:
 
----
+1. Henter opskriftens ingrediens-maengde og enhed (f.eks. 1 kg)
+2. Henter produktets `size_label` og `unit` (f.eks. "500", "g")
+3. Konverterer til samme enhed (1 kg = 1000 g)
+4. Beregner antal pakker: `Math.ceil(1000 / 500) = 2`
+5. Gemmer `quantity: 2` i `shopping_list_items` (2 pakker)
 
-## 6. Bestil-knap: PDF-generering og ordrehaandtering
+**Konverteringstabel** (haandteres i en hjaelpefunktion):
+- 1 kg = 1000 g
+- 1 l = 10 dl = 100 cl = 1000 ml
+- Hvis enheder ikke kan konverteres, bruges raavaerdien direkte
 
-Naar "Bestil" klikkes:
+Samme logik anvendes i indkoebslistens "Tilfoej vare"-popup, saa brugeren altid ser "X x Produkt Stoerrelse".
 
-1. Opret en ordre i `orders` med `total_price` og `total_items`
-2. Opret `order_lines` med pris og stoerrelsesbetegnelse
-3. Marker alle `shopping_list_items` med `is_ordered = true`
-4. Slet alle varer fra indkoebslisten (toem listen)
-5. Gem PDF-data som base64 i en ny kolonne paa `orders` (`pdf_data text`)
-   - PDF'en genereres client-side med simpel HTML-til-canvas metode eller en letvaegtsbibliothek
-   - Indhold: Bestillingsdato, samlet pris, varer grupperet pr. kategori med antal, stoerrelse og pris
-
-**Madplan-beskyttelse**: Naar `is_ordered` saettes til true inden sletning, opdateres synkroniseringslogikken i `MealPlanPage.tsx` saa den tjekker: "Er varerne allerede bestilt?" Hvis ja, fjernes de IKKE fra indkoebslisten naar en opskrift slettes fra madplanen.
-
----
-
-## 7. Ordre-viewet opdateres
-
-`OrdersPage.tsx` aendres til:
-
-- Kolonner: Bestillingsdato, Samlet pris, Aaben (PDF-knap)
-- PDF-knappen aabner PDF'en i et nyt vindue/dialog (base64 decoded)
-- Den nuvaerende detail-popup fjernes til fordel for PDF-visning
+**Filer**: `src/pages/MealPlanPage.tsx` (syncShoppingListForRecipe), `src/pages/ShoppingListPage.tsx` (visning)
 
 ---
 
 ## Teknisk implementering
 
-### Database migration
-En migration der tilfojer alle nye kolonner til `products`, `orders`, `order_lines` og `shopping_list_items`, samt `pdf_data` paa `orders`.
+### Fil 1: `src/pages/ShoppingListPage.tsx`
+- Flyt `ProductForm` ud af komponenten (linje 387-424) til modul-niveau
+- Tilfoej `categories` som prop til `ProductForm`
+- Ret PDF data-URI generering i `placeOrder`
 
-### Filer der aendres
+### Fil 2: `src/pages/MealPlanPage.tsx`
+- Tilfoej hjaelpefunktion `convertToPackages(recipeQty, recipeUnit, productSizeLabel, productUnit)` der returnerer antal pakker
+- Opdater `syncShoppingListForRecipe` til at bruge denne konvertering
 
-**`src/pages/ShoppingListPage.tsx`** (stoerste aendring)
-- Ny admin-dialog med tabs (Kategorier + Varer)
-- Ny tilfoej-popup med favorit-filter og "mest koebte" logik
-- Ny visningslogik med produkt-gruppering og expand
-- Totalpris-beregning
-- Bestil-logik med PDF-generering og is_ordered flag
+### Fil 3: `src/pages/OrdersPage.tsx`
+- Tilfoej `DialogDescription` for at fjerne aria-advarsel
+- Haandter potentielt ugyldige PDF data-URIs
 
-**`src/pages/MealPlanPage.tsx`**
-- Opdater `syncShoppingListForRecipe("remove")` til at tjekke `is_ordered` foer sletning
-
-**`src/pages/OrdersPage.tsx`**
-- Ny tabelstruktur med pris og PDF-knap
-- PDF-visning i dialog eller nyt vindue
-
-### Ny dependency
-- `jspdf` til PDF-generering client-side (letvaegtsbibliothek)
