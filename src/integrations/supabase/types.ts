@@ -144,8 +144,10 @@ export type Database = {
           created_at: string
           id: string
           order_id: string
+          price: number | null
           product_name: string
           quantity: number
+          size_label: string | null
           unit: string | null
         }
         Insert: {
@@ -153,8 +155,10 @@ export type Database = {
           created_at?: string
           id?: string
           order_id: string
+          price?: number | null
           product_name: string
           quantity?: number
+          size_label?: string | null
           unit?: string | null
         }
         Update: {
@@ -162,8 +166,10 @@ export type Database = {
           created_at?: string
           id?: string
           order_id?: string
+          price?: number | null
           product_name?: string
           quantity?: number
+          size_label?: string | null
           unit?: string | null
         }
         Relationships: [
@@ -181,54 +187,87 @@ export type Database = {
           created_at: string
           id: string
           notes: string | null
+          pdf_data: string | null
           status: string
           total_items: number
+          total_price: number | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
           notes?: string | null
+          pdf_data?: string | null
           status?: string
           total_items?: number
+          total_price?: number | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
           notes?: string | null
+          pdf_data?: string | null
           status?: string
           total_items?: number
+          total_price?: number | null
           updated_at?: string
         }
         Relationships: []
       }
       products: {
         Row: {
+          calories_per_100g: number | null
+          carbs_per_100g: number | null
           category_id: string | null
           created_at: string
+          description: string | null
+          fat_per_100g: number | null
+          fiber_per_100g: number | null
           id: string
           image_url: string | null
+          is_favorite: boolean
           is_manual: boolean
           name: string
+          price: number | null
+          protein_per_100g: number | null
+          size_label: string | null
           unit: string | null
         }
         Insert: {
+          calories_per_100g?: number | null
+          carbs_per_100g?: number | null
           category_id?: string | null
           created_at?: string
+          description?: string | null
+          fat_per_100g?: number | null
+          fiber_per_100g?: number | null
           id?: string
           image_url?: string | null
+          is_favorite?: boolean
           is_manual?: boolean
           name: string
+          price?: number | null
+          protein_per_100g?: number | null
+          size_label?: string | null
           unit?: string | null
         }
         Update: {
+          calories_per_100g?: number | null
+          carbs_per_100g?: number | null
           category_id?: string | null
           created_at?: string
+          description?: string | null
+          fat_per_100g?: number | null
+          fiber_per_100g?: number | null
           id?: string
           image_url?: string | null
+          is_favorite?: boolean
           is_manual?: boolean
           name?: string
+          price?: number | null
+          protein_per_100g?: number | null
+          size_label?: string | null
           unit?: string | null
         }
         Relationships: [
@@ -334,6 +373,7 @@ export type Database = {
           created_at: string
           id: string
           is_checked: boolean
+          is_ordered: boolean
           product_id: string | null
           product_name: string
           quantity: number
@@ -346,6 +386,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_checked?: boolean
+          is_ordered?: boolean
           product_id?: string | null
           product_name: string
           quantity?: number
@@ -358,6 +399,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_checked?: boolean
+          is_ordered?: boolean
           product_id?: string | null
           product_name?: string
           quantity?: number

@@ -1,21 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import { Package } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Package, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { da } from "date-fns/locale";
 
-const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
-  pending: { label: "Afventer", variant: "outline" },
-  processing: { label: "Behandles", variant: "secondary" },
-  completed: { label: "Leveret", variant: "default" },
-  cancelled: { label: "Annulleret", variant: "destructive" },
-};
-
 export default function OrdersPage() {
-  const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
+  const [pdfData, setPdfData] = useState<string | null>(null);
 
   const { data: orders = [] } = useQuery({
     queryKey: ["orders"],
@@ -25,25 +18,9 @@ export default function OrdersPage() {
     },
   });
 
-  const { data: orderLines = [] } = useQuery({
-    queryKey: ["order_lines", selectedOrder],
-    queryFn: async () => {
-      if (!selectedOrder) return [];
-      const { data } = await supabase.from("order_lines").select("*").eq("order_id", selectedOrder).order("category_name");
-      return data || [];
-    },
-    enabled: !!selectedOrder,
-  });
-
-  const groupedLines = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    orderLines.forEach((line: any) => {
-      const cat = line.category_name || "Uden kategori";
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(line);
-    });
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-  }, [orderLines]);
+  const openPdf = (base64: string) => {
+    setPdfData(base64);
+  };
 
   return (
     <div className="space-y-4">
@@ -59,49 +36,42 @@ export default function OrdersPage() {
           <table className="w-full">
             <thead className="bg-muted">
               <tr>
-                <th className="text-left p-3 text-sm font-medium">Dato</th>
-                <th className="text-left p-3 text-sm font-medium">Antal varer</th>
-                <th className="text-left p-3 text-sm font-medium">Status</th>
+                <th className="text-left p-3 text-sm font-medium">Bestillingsdato</th>
+                <th className="text-left p-3 text-sm font-medium">Samlet pris</th>
+                <th className="text-left p-3 text-sm font-medium">Åben</th>
               </tr>
             </thead>
             <tbody>
-              {orders.map((order: any) => {
-                const status = STATUS_MAP[order.status] || STATUS_MAP.pending;
-                return (
-                  <tr
-                    key={order.id}
-                    className="border-t cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => setSelectedOrder(order.id)}
-                  >
-                    <td className="p-3 text-sm">{format(new Date(order.created_at), "d. MMM yyyy, HH:mm", { locale: da })}</td>
-                    <td className="p-3 text-sm">{order.total_items} varer</td>
-                    <td className="p-3"><Badge variant={status.variant}>{status.label}</Badge></td>
-                  </tr>
-                );
-              })}
+              {orders.map((order: any) => (
+                <tr key={order.id} className="border-t">
+                  <td className="p-3 text-sm">{format(new Date(order.created_at), "d. MMM yyyy, HH:mm", { locale: da })}</td>
+                  <td className="p-3 text-sm">
+                    {order.total_price != null
+                      ? `${Number(order.total_price).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr`
+                      : "—"}
+                  </td>
+                  <td className="p-3">
+                    {order.pdf_data ? (
+                      <Button variant="outline" size="sm" onClick={() => openPdf(order.pdf_data)} className="gap-1 min-h-[36px]">
+                        <FileText className="h-4 w-4" /> PDF
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Ingen PDF</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       )}
 
-      <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Ordredetaljer</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {groupedLines.map(([category, lines]) => (
-              <div key={category} className="space-y-1">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{category}</h3>
-                {lines.map((line: any) => (
-                  <div key={line.id} className="flex items-center justify-between p-2 rounded bg-muted">
-                    <span className="text-sm">{line.product_name}</span>
-                    <span className="text-sm text-muted-foreground">{line.quantity} {line.unit}</span>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
+      <Dialog open={!!pdfData} onOpenChange={() => setPdfData(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh]">
+          <DialogHeader><DialogTitle>Ordrekvittering</DialogTitle></DialogHeader>
+          {pdfData && (
+            <iframe src={pdfData} className="w-full h-[70vh] border rounded" title="PDF" />
+          )}
         </DialogContent>
       </Dialog>
     </div>

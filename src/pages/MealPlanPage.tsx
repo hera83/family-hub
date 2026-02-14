@@ -50,12 +50,13 @@ async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remo
       }
     }
   } else {
-    // Remove: delete all shopping list items with this recipe_id and source_type "recipe"
+    // Remove: only delete items that haven't been ordered yet
     await supabase
       .from("shopping_list_items")
       .delete()
       .eq("source_type", "recipe")
-      .eq("recipe_id", recipeId);
+      .eq("recipe_id", recipeId)
+      .eq("is_ordered", false);
   }
 }
 
