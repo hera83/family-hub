@@ -5,13 +5,14 @@ import { useTouchMode } from "@/hooks/useTouchMode";
 import { useTheme } from "@/hooks/useTheme";
 import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VirtualKeyboard } from "@/components/VirtualKeyboard";
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const { isDimmed, resetTimer } = useTouchMode();
+  const { isTouchMode, isDimmed, resetTimer } = useTouchMode();
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -37,6 +38,8 @@ export function AppLayout({ children }: AppLayoutProps) {
       {isDimmed && (
         <div className="dim-overlay" onClick={resetTimer} onTouchStart={resetTimer} />
       )}
+
+      <VirtualKeyboard enabled={isTouchMode} />
     </SidebarProvider>
   );
 }
