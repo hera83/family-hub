@@ -118,18 +118,18 @@ export default function ShoppingListPage() {
 
   // Grouped items by product_id for expand logic
   const groupedByProduct = useMemo(() => {
-    const map: Record<string, { product_id: string | null; product_name: string; size_label: string; category: string; sortOrder: number; category_id: string | null; totalQty: number; price: number | null; lines: any[] }> = {};
+    const map: Record<string, { product_id: string | null; product_name: string; size_label: string; unit: string; category: string; sortOrder: number; category_id: string | null; totalQty: number; price: number | null; lines: any[] }> = {};
     items.forEach((item: any) => {
       const key = item.product_id || `manual_${item.id}`;
       const catName = item.item_categories?.name || "Uden kategori";
       const sortOrder = item.item_categories?.sort_order ?? 999;
       if (!map[key]) {
-        // Find product to get size_label and price
         const prod = products.find((p: any) => p.id === item.product_id);
         map[key] = {
           product_id: item.product_id,
           product_name: item.product_name,
           size_label: prod?.size_label || "",
+          unit: prod?.unit || "",
           category: catName,
           sortOrder,
           category_id: item.category_id,
@@ -310,7 +310,7 @@ export default function ShoppingListPage() {
       if (unchecked.length === 0) return;
 
       // Aggregate by product_id
-      const aggMap: Record<string, { product_name: string; totalQty: number; unit: string; category_name: string; price: number | null; size_label: string; sortOrder: number }> = {};
+      const aggMap: Record<string, { product_name: string; totalQty: number; unit: string; productUnit: string; category_name: string; price: number | null; size_label: string; sortOrder: number }> = {};
       unchecked.forEach((item: any) => {
         const key = item.product_id || `manual_${item.id}`;
         const prod = products.find((p: any) => p.id === item.product_id);
@@ -321,6 +321,7 @@ export default function ShoppingListPage() {
             product_name: item.product_name,
             totalQty: 0,
             unit: item.unit || "stk",
+            productUnit: prod?.unit || "",
             category_name: catName,
             price: prod?.price ?? null,
             size_label: prod?.size_label || "",
@@ -377,7 +378,7 @@ export default function ShoppingListPage() {
         doc.setFont("helvetica", "normal");
         catItems.forEach((a) => {
           if (y > 280) { doc.addPage(); y = 20; }
-          const label = `${a.product_name}${a.size_label ? " " + a.size_label : ""}`;
+          const label = `${a.product_name}${a.size_label ? " " + a.size_label : ""}${a.productUnit && a.size_label ? " " + a.productUnit : ""}`;
           const unitPrice = a.price ? `${Number(a.price).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr` : "";
           const lineTotal = a.price ? `${(a.totalQty * Number(a.price)).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr` : "";
           doc.text(`${a.totalQty}`, 18, y);
@@ -514,8 +515,16 @@ export default function ShoppingListPage() {
                     )}
                     <div className="flex-1 min-w-0">
                       <span className={`text-sm ${allChecked ? "line-through" : ""}`}>
-                        {pg.totalQty} x {pg.product_name}{pg.size_label ? ` ${pg.size_label}` : ""}
+                        {pg.totalQty} x {pg.product_name}{pg.size_label ? ` ${pg.size_label}` : ""}{pg.unit && pg.size_label ? ` ${pg.unit}` : ""}
                       </span>
+                      {(() => {
+                        const recipeLines = pg.lines.filter((l: any) => l.source_type === "recipe" && l.recipe_qty != null);
+                        if (recipeLines.length > 0) {
+                          const recipeInfo = recipeLines.map((l: any) => `${l.recipe_qty} ${l.recipe_unit || ""}`).join(" + ");
+                          return <span className="text-xs text-muted-foreground ml-1">({recipeInfo.trim()})</span>;
+                        }
+                        return null;
+                      })()}
                       {pg.price && (
                         <span className="text-xs text-muted-foreground ml-2">
                           á {Number(pg.price).toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr
@@ -544,7 +553,10 @@ export default function ShoppingListPage() {
                             className="h-4 w-4"
                           />
                           <span className={`text-sm flex-1 ${line.is_checked ? "line-through" : ""}`}>
-                            {line.quantity} x {pg.product_name}{pg.size_label ? ` ${pg.size_label}` : ""}
+                            {line.quantity} x {pg.product_name}{pg.size_label ? ` ${pg.size_label}` : ""}{pg.unit && pg.size_label ? ` ${pg.unit}` : ""}
+                            {line.source_type === "recipe" && line.recipe_qty != null && (
+                              <span className="text-xs text-muted-foreground ml-1">({line.recipe_qty} {line.recipe_unit || ""})</span>
+                            )}
                           </span>
                           <Badge variant={line.source_type === "recipe" ? "secondary" : "outline"} className="text-xs">
                             {line.source_type === "recipe" ? (line.recipes?.title || "Opskrift") : "Manuel"}
