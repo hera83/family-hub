@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Package, FileText } from "lucide-react";
 import { format } from "date-fns";
@@ -68,7 +68,10 @@ export default function OrdersPage() {
 
       <Dialog open={!!pdfData} onOpenChange={() => setPdfData(null)}>
         <DialogContent className="max-w-3xl max-h-[90vh]">
-          <DialogHeader><DialogTitle>Ordrekvittering</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Ordrekvittering</DialogTitle>
+            <DialogDescription>Vis den genererede PDF for denne ordre.</DialogDescription>
+          </DialogHeader>
           {pdfData && (
             <iframe src={pdfData} className="w-full h-[70vh] border rounded" title="PDF" />
           )}

@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,6 +15,48 @@ import { format } from "date-fns";
 import { da } from "date-fns/locale";
 
 const UNITS = ["stk", "kg", "g", "l", "dl", "ml", "pakke", "spsk", "tsk", "dåse"];
+
+// ProductForm moved to module level to prevent focus loss on re-render
+function ProductForm({ values, onChange, categories, isEdit }: { values: any; onChange: (v: any) => void; categories: any[]; isEdit?: boolean }) {
+  return (
+    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+      <div><Label>Varenavn *</Label><Input value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} className="min-h-[44px]" /></div>
+      <div><Label>Billede URL</Label><Input value={values.image_url || ""} onChange={(e) => onChange({ ...values, image_url: e.target.value })} className="min-h-[44px]" /></div>
+      <div><Label>Beskrivelse</Label><Input value={values.description || ""} onChange={(e) => onChange({ ...values, description: e.target.value })} className="min-h-[44px]" /></div>
+      <div className="grid grid-cols-2 gap-2">
+        <div><Label>Enhed</Label>
+          <select value={values.unit} onChange={(e) => onChange({ ...values, unit: e.target.value })} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </div>
+        <div><Label>Mængde (f.eks. 1 L)</Label><Input value={values.size_label || ""} onChange={(e) => onChange({ ...values, size_label: e.target.value })} className="min-h-[44px]" /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div><Label>Pris (kr)</Label><Input value={values.price ?? ""} onChange={(e) => onChange({ ...values, price: e.target.value })} placeholder="11,95" className="min-h-[44px]" /></div>
+        <div><Label>Kategori</Label>
+          <select value={values.category_id || ""} onChange={(e) => onChange({ ...values, category_id: e.target.value })} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option value="">Vælg...</option>
+            {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Switch checked={values.is_favorite || false} onCheckedChange={(v) => onChange({ ...values, is_favorite: v })} />
+        <Label>Favoritvare</Label>
+      </div>
+      <div className="border-t pt-3">
+        <Label className="text-muted-foreground">Næringsindhold pr. 100g (valgfrit)</Label>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <div><Label className="text-xs">Kalorier</Label><Input type="number" value={values.calories_per_100g ?? ""} onChange={(e) => onChange({ ...values, calories_per_100g: e.target.value })} className="min-h-[40px]" /></div>
+          <div><Label className="text-xs">Fedt (g)</Label><Input type="number" value={values.fat_per_100g ?? ""} onChange={(e) => onChange({ ...values, fat_per_100g: e.target.value })} className="min-h-[40px]" /></div>
+          <div><Label className="text-xs">Kulhydrater (g)</Label><Input type="number" value={values.carbs_per_100g ?? ""} onChange={(e) => onChange({ ...values, carbs_per_100g: e.target.value })} className="min-h-[40px]" /></div>
+          <div><Label className="text-xs">Protein (g)</Label><Input type="number" value={values.protein_per_100g ?? ""} onChange={(e) => onChange({ ...values, protein_per_100g: e.target.value })} className="min-h-[40px]" /></div>
+          <div><Label className="text-xs">Fibre (g)</Label><Input type="number" value={values.fiber_per_100g ?? ""} onChange={(e) => onChange({ ...values, fiber_per_100g: e.target.value })} className="min-h-[40px]" /></div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ShoppingListPage() {
   const queryClient = useQueryClient();
@@ -307,7 +349,9 @@ export default function ShoppingListPage() {
         y += 4;
       });
 
-      const pdfBase64 = doc.output("datauristring");
+      const rawPdf = doc.output("datauristring");
+      // Strip the filename segment that jsPDF adds (browsers can't handle it in iframes)
+      const pdfBase64 = rawPdf.replace(/;filename=[^;]*/, "");
 
       // Create order
       const { data: order } = await supabase.from("orders").insert({
@@ -384,44 +428,7 @@ export default function ShoppingListPage() {
     return products.filter((p: any) => p.name.toLowerCase().includes(productAdminSearch.toLowerCase()));
   }, [products, productAdminSearch]);
 
-  const ProductForm = ({ values, onChange, isEdit }: { values: any; onChange: (v: any) => void; isEdit?: boolean }) => (
-    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-      <div><Label>Varenavn *</Label><Input value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} className="min-h-[44px]" /></div>
-      <div><Label>Billede URL</Label><Input value={values.image_url || ""} onChange={(e) => onChange({ ...values, image_url: e.target.value })} className="min-h-[44px]" /></div>
-      <div><Label>Beskrivelse</Label><Input value={values.description || ""} onChange={(e) => onChange({ ...values, description: e.target.value })} className="min-h-[44px]" /></div>
-      <div className="grid grid-cols-2 gap-2">
-        <div><Label>Enhed</Label>
-          <select value={values.unit} onChange={(e) => onChange({ ...values, unit: e.target.value })} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </div>
-        <div><Label>Mængde (f.eks. 1 L)</Label><Input value={values.size_label || ""} onChange={(e) => onChange({ ...values, size_label: e.target.value })} className="min-h-[44px]" /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div><Label>Pris (kr)</Label><Input value={values.price ?? ""} onChange={(e) => onChange({ ...values, price: e.target.value })} placeholder="11,95" className="min-h-[44px]" /></div>
-        <div><Label>Kategori</Label>
-          <select value={values.category_id || ""} onChange={(e) => onChange({ ...values, category_id: e.target.value })} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-            <option value="">Vælg...</option>
-            {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Switch checked={values.is_favorite || false} onCheckedChange={(v) => onChange({ ...values, is_favorite: v })} />
-        <Label>Favoritvare</Label>
-      </div>
-      <div className="border-t pt-3">
-        <Label className="text-muted-foreground">Næringsindhold pr. 100g (valgfrit)</Label>
-        <div className="grid grid-cols-2 gap-2 mt-2">
-          <div><Label className="text-xs">Kalorier</Label><Input type="number" value={values.calories_per_100g ?? ""} onChange={(e) => onChange({ ...values, calories_per_100g: e.target.value })} className="min-h-[40px]" /></div>
-          <div><Label className="text-xs">Fedt (g)</Label><Input type="number" value={values.fat_per_100g ?? ""} onChange={(e) => onChange({ ...values, fat_per_100g: e.target.value })} className="min-h-[40px]" /></div>
-          <div><Label className="text-xs">Kulhydrater (g)</Label><Input type="number" value={values.carbs_per_100g ?? ""} onChange={(e) => onChange({ ...values, carbs_per_100g: e.target.value })} className="min-h-[40px]" /></div>
-          <div><Label className="text-xs">Protein (g)</Label><Input type="number" value={values.protein_per_100g ?? ""} onChange={(e) => onChange({ ...values, protein_per_100g: e.target.value })} className="min-h-[40px]" /></div>
-          <div><Label className="text-xs">Fibre (g)</Label><Input type="number" value={values.fiber_per_100g ?? ""} onChange={(e) => onChange({ ...values, fiber_per_100g: e.target.value })} className="min-h-[40px]" /></div>
-        </div>
-      </div>
-    </div>
-  );
+  // ProductForm is now defined at module level above
 
   return (
     <div className="space-y-4">
@@ -590,7 +597,7 @@ export default function ShoppingListPage() {
       <Dialog open={showCreateProduct} onOpenChange={setShowCreateProduct}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Opret ny vare</DialogTitle></DialogHeader>
-          <ProductForm values={newProduct} onChange={setNewProduct} />
+          <ProductForm values={newProduct} onChange={setNewProduct} categories={categories} />
           <DialogFooter>
             <Button onClick={() => newProduct.name && createProductMutation.mutate(newProduct)} disabled={!newProduct.name} className="min-h-[44px]">Opret vare</Button>
           </DialogFooter>
@@ -671,7 +678,7 @@ export default function ShoppingListPage() {
       <Dialog open={!!editingProduct} onOpenChange={() => setEditingProduct(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Rediger vare</DialogTitle></DialogHeader>
-          {editingProduct && <ProductForm values={editingProduct} onChange={setEditingProduct} isEdit />}
+          {editingProduct && <ProductForm values={editingProduct} onChange={setEditingProduct} categories={categories} isEdit />}
           <DialogFooter>
             <Button onClick={() => editingProduct && updateProductMutation.mutate(editingProduct)} className="min-h-[44px]">Gem ændringer</Button>
           </DialogFooter>
