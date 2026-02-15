@@ -154,12 +154,22 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
 
   if (!enabled || !visible) return null;
 
+  // Stop all events from passing through the keyboard to elements behind it
+  const stopPropagation = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+  };
+
   if (minimized) {
     return (
       <div
         ref={keyboardRef}
         data-virtual-keyboard="true"
         className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 flex justify-center"
+        onPointerDown={stopPropagation}
+        onTouchStart={stopPropagation}
+        onTouchEnd={stopPropagation}
+        onClick={stopPropagation}
+        onMouseDown={stopPropagation}
       >
         <Button
           variant="outline"
@@ -167,6 +177,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
           className="min-h-[44px] px-6 gap-2 active:bg-primary active:text-primary-foreground active:scale-95 transition-all"
           onPointerDown={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             setMinimized(false);
           }}
           tabIndex={-1}
@@ -213,6 +224,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         className={className}
         onPointerDown={(e) => {
           e.preventDefault();
+          e.stopPropagation();
           handleKey(key);
         }}
         tabIndex={-1}
@@ -228,6 +240,11 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       ref={keyboardRef}
       data-virtual-keyboard="true"
       className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 safe-area-bottom animate-in slide-in-from-bottom duration-200"
+      onPointerDown={stopPropagation}
+      onTouchStart={stopPropagation}
+      onTouchEnd={stopPropagation}
+      onClick={stopPropagation}
+      onMouseDown={stopPropagation}
     >
       <div className={`max-w-2xl mx-auto space-y-1 ${layout === "numeric" ? "max-w-xs" : ""}`}>
         {rows.map((row, i) => (
