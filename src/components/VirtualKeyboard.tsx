@@ -48,28 +48,28 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
 
-  // Intercept Radix DismissableLayer's capture-phase pointerdown on document.
-  // We tag cloned events to avoid infinite re-dispatch loops.
+  // Intercept Radix DismissableLayer's capture-phase listeners on document.
+  // Radix listens for pointerdown AND mousedown in capture phase to dismiss overlays.
+  // We block both when the event originates from the keyboard.
+  // React works fine without re-dispatch because createPortal handles event delegation.
   useEffect(() => {
     if (!visible) return;
 
-    const handler = (e: PointerEvent) => {
-      // Skip our own re-dispatched clones
-      if ((e as any).__vkb) return;
-
+    const blockIfKeyboard = (e: Event) => {
       const target = e.target as Element | null;
       if (target?.closest?.("[data-virtual-keyboard]")) {
         e.stopImmediatePropagation();
-        // Re-dispatch a tagged clone so React's delegation still works
-        const clone = new PointerEvent(e.type, e);
-        (clone as any).__vkb = true;
-        target.dispatchEvent(clone);
       }
     };
 
-    document.addEventListener("pointerdown", handler, { capture: true });
+    // Radix uses both pointerdown and mousedown for DismissableLayer
+    document.addEventListener("pointerdown", blockIfKeyboard, { capture: true });
+    document.addEventListener("mousedown", blockIfKeyboard, { capture: true });
+    document.addEventListener("touchstart", blockIfKeyboard, { capture: true });
     return () => {
-      document.removeEventListener("pointerdown", handler, { capture: true });
+      document.removeEventListener("pointerdown", blockIfKeyboard, { capture: true });
+      document.removeEventListener("mousedown", blockIfKeyboard, { capture: true });
+      document.removeEventListener("touchstart", blockIfKeyboard, { capture: true });
     };
   }, [visible]);
 
