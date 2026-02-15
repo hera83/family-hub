@@ -49,19 +49,21 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const keyboardRef = useRef<HTMLDivElement>(null);
 
   // Intercept Radix DismissableLayer's capture-phase pointerdown on document.
-  // We listen in capture with stopImmediatePropagation so Radix's handler
-  // (also on document capture) never fires — but we re-dispatch a clone
-  // on the target so React's root-level listener still picks it up.
+  // We tag cloned events to avoid infinite re-dispatch loops.
   useEffect(() => {
     if (!visible) return;
 
     const handler = (e: PointerEvent) => {
+      // Skip our own re-dispatched clones
+      if ((e as any).__vkb) return;
+
       const target = e.target as Element | null;
       if (target?.closest?.("[data-virtual-keyboard]")) {
         e.stopImmediatePropagation();
-        // Re-dispatch so React delegation on #root still works
+        // Re-dispatch a tagged clone so React's delegation still works
         const clone = new PointerEvent(e.type, e);
-        Promise.resolve().then(() => target.dispatchEvent(clone));
+        (clone as any).__vkb = true;
+        target.dispatchEvent(clone);
       }
     };
 
