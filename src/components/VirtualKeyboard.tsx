@@ -47,6 +47,22 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
+  const portalContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Create a dedicated portal container that's always the last child of body.
+  // This ensures the keyboard renders above Radix portals regardless of DOM order.
+  useEffect(() => {
+    const container = document.createElement("div");
+    container.id = "virtual-keyboard-portal";
+    container.style.position = "relative";
+    container.style.zIndex = "99999";
+    document.body.appendChild(container);
+    portalContainerRef.current = container;
+    return () => {
+      container.remove();
+      portalContainerRef.current = null;
+    };
+  }, []);
 
   // Intercept Radix DismissableLayer's capture-phase listeners on document.
   // Radix listens for pointerdown AND mousedown in capture phase to dismiss overlays.
@@ -261,6 +277,14 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     </div>
   );
 
-  // Portal to document.body so keyboard is in the same stacking context as Radix portals
-  return createPortal(keyboardContent, document.body);
+  // Portal into our dedicated container (always last in body, above Radix portals)
+  const container = portalContainerRef.current;
+  if (!container) return null;
+
+  // Ensure our container is always the last child of body (after any Radix portals)
+  if (container !== document.body.lastElementChild) {
+    document.body.appendChild(container);
+  }
+
+  return createPortal(keyboardContent, container);
 }
