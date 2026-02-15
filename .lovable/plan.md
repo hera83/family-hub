@@ -1,77 +1,47 @@
 
+# Ny tilgang: Deaktiver overlay pointer-events via CSS
 
-# Stabilt virtuelt tastatur med Enter-knap og highlight
+## Problemet
+Radix UI's overlay-element (den morklagte baggrund bag popups) er et `fixed inset-0` element der daekker hele skaermen og fanger alle pointer-events -- **ogsaa dem der er rettet mod tastaturet**. Uanset z-index og DOM-raekkefoelge, saa skaber Radix-portalen sin egen stacking context, som blokerer klik og hover paa tastaturet.
 
-## Problem
+De tidligere forsog har proevet at loese det med:
+- DOM-order manipulation (MutationObserver) -- virker ikke pga. stacking contexts
+- stopImmediatePropagation -- draeber Reacts event-system
+- Event re-dispatch -- skaber uendelige loops
 
-Tastaturet lukker stadig fordi `focusout`-logikken er for aggressiv. Hver gang fokus flyttes (f.eks. af Radix focus trap), forsoeges tastaturet skjult. Guard-mekanismen med `isPressingRef` er ikke palidelig nok.
+## Den nye tilgang
 
-## Ny strategi: Tastaturet lukker KUN eksplicit
+I stedet for at kaempe mod portalerne, **slaar vi pointer-events fra paa overlay-elementerne** naar tastaturet er synligt. Tastaturet faar saa automatisk alle events.
 
-I stedet for at lytte paa `focusout` for at skjule tastaturet, aendres logikken saa tastaturet **kun** lukker naar:
+### Trin 1: Body-klasse som signal
+Naar tastaturet er synligt, tilfoej klassen `vkb-active` paa `document.body`. Naar det skjules, fjern klassen.
 
-1. Brugeren trykker paa **Enter**-knappen (ny knap) -- lukker tastaturet og trigger form submit/blur
-2. Brugeren trykker paa **Minimer**-knappen (eksisterende)
-3. Inputfeltet **forsvinder fra DOM** (tjekkes via MutationObserver eller periodisk check)
-4. Touch-mode slaas fra (`enabled` bliver false)
+### Trin 2: Data-attribut paa overlays
+Tilfoej `data-keyboard-overlay` attributten paa `DialogOverlay` og `SheetOverlay` komponenterne, saa de kan targeteres praecist med CSS.
 
-`focusout`-lytteren fjernes helt som mekanisme til at skjule tastaturet.
-
-## Aendringer
-
-### `src/components/VirtualKeyboard.tsx`
-
-**1. Fjern focusout-baseret skjulning**
-- Behold `focusin`-lytteren (til at vise tastaturet og saette activeRef)
-- Fjern `focusout`-lytteren helt
-- Tilfoej i stedet en `MutationObserver` eller `setInterval` (hver 500ms) der tjekker om `activeRef.current` stadig er i DOM -- hvis ikke, skjul tastaturet
-
-**2. Tilfoej ENTER-tast**
-- Tilfoej "ENTER" til tastaturlayouts:
-  - Text: Erstat "MINIMIZE" med "ENTER" i sidste raekke, tilfoej "MINIMIZE" som separat knap
-  - Eller: Laeg "ENTER" ved siden af "MINIMIZE" i bunden
-- Layout bliver: `["123", "SPACE", "ENTER", "MINIMIZE"]`
-- Numeric: `["ABC", "ENTER", "MINIMIZE"]`
-- ENTER-knappens handling: blur inputfeltet, skjul tastaturet
-
-**3. Tilfoej active/pressed styling paa knapper**
-- Tilfoej `active:` Tailwind-klasser paa alle tastatur-knapper for visuelt feedback
-- Brug `active:bg-primary active:text-primary-foreground active:scale-95` saa knapperne tydeligt reagerer ved klik/tryk
-- Dette virker baade med mus og touch
-
-### Konkret layout-aendring
-
-```text
-Text-tastatur (foer):
-  [123] [________SPACE________] [.] [,] [v MINIMIZE]
-
-Text-tastatur (efter):
-  [123] [________SPACE________] [.] [,] [ENTER] [v MINIMIZE]
-
-Numerisk (foer):
-  [ABC] [-] [v MINIMIZE]
-
-Numerisk (efter):
-  [ABC] [-] [ENTER] [v MINIMIZE]
+### Trin 3: Global CSS-regel
+Tilfoej i `src/index.css`:
+```css
+body.vkb-active [data-keyboard-overlay] {
+  pointer-events: none;
+}
 ```
 
-### Konkret styling for highlight
+Dette goer at den moerke baggrund bag popups ikke laengere fanger museklik/hover naar tastaturet er fremme -- men selve popup-indholdet (dialog-boksen) beholder sine pointer-events.
 
-Alle taster faar disse ekstra Tailwind-klasser:
-```
-active:bg-primary active:text-primary-foreground active:scale-95 transition-all
-```
-
-Dette giver en tydelig visuel feedback naar en knap trykkes -- baade med mus og touch.
-
-## Teknisk oversigt
-
-- `focusout`-lytteren erstattes af en periodisk DOM-check (interval) der skjuler tastaturet hvis inputfeltet er fjernet
-- `isPressingRef` kan fjernes da den ikke laengere er noedvendig
-- ENTER-tasten kalder `el.blur()` og `setVisible(false)`
-- Ingen aendringer i dialog.tsx eller sheet.tsx -- de eksisterende fixes forbliver
+### Trin 4: Fjern den custom portal-container
+Gaa tilbage til at bruge `createPortal(content, document.body)` direkte. Fjern MutationObserver-logikken og den dedikerede container. Med overlay pointer-events deaktiveret er det ikke noedvendigt at manipulere DOM-raekkefoelge laengere.
 
 ## Filer der aendres
 
-- `src/components/VirtualKeyboard.tsx` (layout, logik, styling)
+| Fil | AEndring |
+|-----|---------|
+| `src/components/VirtualKeyboard.tsx` | Tilfoej/fjern `vkb-active` klasse paa body. Fjern portal-container logik, brug `document.body` direkte. |
+| `src/components/ui/dialog.tsx` | Tilfoej `data-keyboard-overlay` paa `DialogOverlay`. |
+| `src/components/ui/sheet.tsx` | Tilfoej `data-keyboard-overlay` paa `SheetOverlay`. |
+| `src/index.css` | Tilfoej CSS-regel for `body.vkb-active [data-keyboard-overlay]`. |
 
+## Hvorfor dette virker
+- Overlay-elementet er det eneste der blokerer -- ved at saette `pointer-events: none` paa det, naar tastaturet er aktivt, kan events naa tastaturet uanset stacking context.
+- Ingen manipulation af event-propagation, saa React og Radix fungerer normalt.
+- Popup-indholdet (selve dialogen) beholder sine pointer-events, saa man stadig kan interagere med inputs inde i popuppen.
