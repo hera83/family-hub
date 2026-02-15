@@ -8,14 +8,14 @@ const TEXT_ROWS_LOWER = [
   ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "å"],
   ["a", "s", "d", "f", "g", "h", "j", "k", "l", "æ", "ø"],
   ["SHIFT", "z", "x", "c", "v", "b", "n", "m", "BACKSPACE"],
-  ["123", "SPACE", ".", ",", "MINIMIZE"],
+  ["123", "SPACE", ".", ",", "ENTER", "MINIMIZE"],
 ];
 
 const TEXT_ROWS_UPPER = [
   ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "Å"],
   ["A", "S", "D", "F", "G", "H", "J", "K", "L", "Æ", "Ø"],
   ["SHIFT", "Z", "X", "C", "V", "B", "N", "M", "BACKSPACE"],
-  ["123", "SPACE", ".", ",", "MINIMIZE"],
+  ["123", "SPACE", ".", ",", "ENTER", "MINIMIZE"],
 ];
 
 const NUMERIC_ROWS = [
@@ -23,7 +23,7 @@ const NUMERIC_ROWS = [
   ["4", "5", "6"],
   ["7", "8", "9"],
   [".", "0", "BACKSPACE"],
-  ["ABC", "-", "MINIMIZE"],
+  ["ABC", "-", "ENTER", "MINIMIZE"],
 ];
 
 function isNumericInput(el: HTMLElement | null): boolean {
@@ -46,8 +46,8 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
-  const isPressingRef = useRef(false);
 
+  // Show keyboard on focusin, no focusout listener
   useEffect(() => {
     if (!enabled) return;
 
@@ -72,40 +72,29 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       }
     };
 
-    const onFocusOut = (e: FocusEvent) => {
-      setTimeout(() => {
-        if (isPressingRef.current) {
-          activeRef.current?.focus();
-          return;
-        }
-        const active = document.activeElement;
-        if (keyboardRef.current?.contains(active as Node)) return;
-        if (
-          active instanceof HTMLInputElement ||
-          active instanceof HTMLTextAreaElement
-        ) {
-          return;
-        }
+    document.addEventListener("focusin", onFocusIn);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+    };
+  }, [enabled]);
+
+  // Periodic DOM check: hide keyboard if input is removed from DOM
+  useEffect(() => {
+    if (!visible || !enabled) return;
+    const interval = setInterval(() => {
+      if (activeRef.current && !document.body.contains(activeRef.current)) {
         setVisible(false);
         setMinimized(false);
         activeRef.current = null;
-      }, 200);
-    };
-
-    document.addEventListener("focusin", onFocusIn);
-    document.addEventListener("focusout", onFocusOut);
-
-    return () => {
-      document.removeEventListener("focusin", onFocusIn);
-      document.removeEventListener("focusout", onFocusOut);
-    };
-  }, [enabled]);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [visible, enabled]);
 
   const handleKey = useCallback((key: string) => {
     const el = activeRef.current;
     if (!el) return;
 
-    // Re-focus the input
     el.focus();
 
     const nativeInputValueSetter =
@@ -129,6 +118,12 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         el.setSelectionRange(start, start);
       }
       requestAnimationFrame(() => el.focus());
+    } else if (key === "ENTER") {
+      el.blur();
+      setVisible(false);
+      setMinimized(false);
+      activeRef.current = null;
+      return;
     } else if (key === "MINIMIZE") {
       setMinimized(true);
       return;
@@ -159,7 +154,6 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
 
   if (!enabled || !visible) return null;
 
-  // Minimized state: show a small expand bar
   if (minimized) {
     return (
       <div
@@ -170,7 +164,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         <Button
           variant="outline"
           size="sm"
-          className="min-h-[44px] px-6 gap-2"
+          className="min-h-[44px] px-6 gap-2 active:bg-primary active:text-primary-foreground active:scale-95 transition-all"
           onPointerDown={(e) => {
             e.preventDefault();
             setMinimized(false);
@@ -187,24 +181,29 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
 
   const rows = layout === "numeric" ? NUMERIC_ROWS : shifted ? TEXT_ROWS_UPPER : TEXT_ROWS_LOWER;
 
+  const activeStyle = "active:bg-primary active:text-primary-foreground active:scale-95 transition-all";
+
   const renderKey = (key: string) => {
     let content: React.ReactNode = key;
-    let className = "min-h-[48px] min-w-[36px] text-base font-medium px-2 flex-1";
+    let className = `min-h-[48px] min-w-[36px] text-base font-medium px-2 flex-1 ${activeStyle}`;
 
     if (key === "BACKSPACE") {
       content = <Delete className="h-5 w-5" />;
-      className = "min-h-[48px] min-w-[56px] px-3";
+      className = `min-h-[48px] min-w-[56px] px-3 ${activeStyle}`;
+    } else if (key === "ENTER") {
+      content = <CornerDownLeft className="h-5 w-5" />;
+      className = `min-h-[48px] min-w-[56px] px-3 ${activeStyle}`;
     } else if (key === "MINIMIZE") {
       content = <ChevronDown className="h-5 w-5" />;
-      className = "min-h-[48px] min-w-[56px] px-3";
+      className = `min-h-[48px] min-w-[56px] px-3 ${activeStyle}`;
     } else if (key === "SPACE") {
       content = <Space className="h-5 w-5" />;
-      className = "min-h-[48px] flex-[4] px-3";
+      className = `min-h-[48px] flex-[4] px-3 ${activeStyle}`;
     } else if (key === "SHIFT") {
       content = <ChevronUp className={`h-5 w-5 ${shifted ? "text-primary" : ""}`} />;
-      className = "min-h-[48px] min-w-[56px] px-3";
+      className = `min-h-[48px] min-w-[56px] px-3 ${activeStyle}`;
     } else if (key === "123" || key === "ABC") {
-      className = "min-h-[48px] min-w-[56px] px-3 text-sm font-semibold";
+      className = `min-h-[48px] min-w-[56px] px-3 text-sm font-semibold ${activeStyle}`;
     }
 
     return (
@@ -214,8 +213,6 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         className={className}
         onPointerDown={(e) => {
           e.preventDefault();
-          isPressingRef.current = true;
-          setTimeout(() => { isPressingRef.current = false; }, 300);
           handleKey(key);
         }}
         tabIndex={-1}
