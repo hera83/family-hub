@@ -46,6 +46,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
+  const isPressingRef = useRef(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -73,6 +74,10 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
 
     const onFocusOut = (e: FocusEvent) => {
       setTimeout(() => {
+        if (isPressingRef.current) {
+          activeRef.current?.focus();
+          return;
+        }
         const active = document.activeElement;
         if (keyboardRef.current?.contains(active as Node)) return;
         if (
@@ -123,6 +128,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.setSelectionRange(start, start);
       }
+      requestAnimationFrame(() => el.focus());
     } else if (key === "MINIMIZE") {
       setMinimized(true);
       return;
@@ -131,6 +137,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       nativeInputValueSetter?.call(el, newVal);
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.setSelectionRange(start + 1, start + 1);
+      requestAnimationFrame(() => el.focus());
     } else if (key === "SHIFT") {
       setShifted((s) => !s);
       return;
@@ -146,6 +153,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.setSelectionRange(start + 1, start + 1);
       if (shifted) setShifted(false);
+      requestAnimationFrame(() => el.focus());
     }
   }, [shifted]);
 
@@ -205,7 +213,9 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         variant={key === "SHIFT" && shifted ? "default" : "outline"}
         className={className}
         onPointerDown={(e) => {
-          e.preventDefault(); // Prevent focus steal from input
+          e.preventDefault();
+          isPressingRef.current = true;
+          setTimeout(() => { isPressingRef.current = false; }, 300);
           handleKey(key);
         }}
         tabIndex={-1}
