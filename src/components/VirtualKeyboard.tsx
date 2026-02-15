@@ -48,29 +48,28 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
 
-  // Native event interception — stops Radix DismissableLayer from seeing keyboard events.
-  // Since we portal to body, native stopPropagation prevents events from reaching
-  // Radix's document-level listeners.
+  // Intercept Radix DismissableLayer's capture-phase pointerdown on document.
+  // We listen in capture with stopImmediatePropagation so Radix's handler
+  // (also on document capture) never fires — but we re-dispatch a clone
+  // on the target so React's root-level listener still picks it up.
   useEffect(() => {
-    const el = keyboardRef.current;
-    if (!el || !visible) return;
+    if (!visible) return;
 
-    const stopNative = (e: Event) => {
-      e.stopPropagation();
+    const handler = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.("[data-virtual-keyboard]")) {
+        e.stopImmediatePropagation();
+        // Re-dispatch so React delegation on #root still works
+        const clone = new PointerEvent(e.type, e);
+        Promise.resolve().then(() => target.dispatchEvent(clone));
+      }
     };
 
-    el.addEventListener("pointerdown", stopNative, false);
-    el.addEventListener("mousedown", stopNative, false);
-    el.addEventListener("touchstart", stopNative, false);
-    el.addEventListener("click", stopNative, false);
-
+    document.addEventListener("pointerdown", handler, { capture: true });
     return () => {
-      el.removeEventListener("pointerdown", stopNative, false);
-      el.removeEventListener("mousedown", stopNative, false);
-      el.removeEventListener("touchstart", stopNative, false);
-      el.removeEventListener("click", stopNative, false);
+      document.removeEventListener("pointerdown", handler, { capture: true });
     };
-  }, [visible, minimized]);
+  }, [visible]);
 
   // Show keyboard on focusin
   useEffect(() => {
