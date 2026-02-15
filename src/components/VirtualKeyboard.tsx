@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Delete, CornerDownLeft, Space, ChevronUp, ChevronDown } from "lucide-react";
 
@@ -47,7 +48,31 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
 
-  // Show keyboard on focusin, no focusout listener
+  // Native event interception — stops Radix DismissableLayer from seeing keyboard events.
+  // Since we portal to body, native stopPropagation prevents events from reaching
+  // Radix's document-level listeners.
+  useEffect(() => {
+    const el = keyboardRef.current;
+    if (!el || !visible) return;
+
+    const stopNative = (e: Event) => {
+      e.stopPropagation();
+    };
+
+    el.addEventListener("pointerdown", stopNative, false);
+    el.addEventListener("mousedown", stopNative, false);
+    el.addEventListener("touchstart", stopNative, false);
+    el.addEventListener("click", stopNative, false);
+
+    return () => {
+      el.removeEventListener("pointerdown", stopNative, false);
+      el.removeEventListener("mousedown", stopNative, false);
+      el.removeEventListener("touchstart", stopNative, false);
+      el.removeEventListener("click", stopNative, false);
+    };
+  }, [visible, minimized]);
+
+  // Show keyboard on focusin
   useEffect(() => {
     if (!enabled) return;
 
@@ -154,44 +179,6 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
 
   if (!enabled || !visible) return null;
 
-  // Stop all events from passing through the keyboard to elements behind it
-  const stopPropagation = (e: React.SyntheticEvent) => {
-    e.stopPropagation();
-  };
-
-  if (minimized) {
-    return (
-      <div
-        ref={keyboardRef}
-        data-virtual-keyboard="true"
-        className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 flex justify-center"
-        onPointerDown={stopPropagation}
-        onTouchStart={stopPropagation}
-        onTouchEnd={stopPropagation}
-        onClick={stopPropagation}
-        onMouseDown={stopPropagation}
-      >
-        <Button
-          variant="outline"
-          size="sm"
-          className="min-h-[44px] px-6 gap-2 active:bg-primary active:text-primary-foreground active:scale-95 transition-all"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setMinimized(false);
-          }}
-          tabIndex={-1}
-          type="button"
-        >
-          <ChevronUp className="h-4 w-4" />
-          Vis tastatur
-        </Button>
-      </div>
-    );
-  }
-
-  const rows = layout === "numeric" ? NUMERIC_ROWS : shifted ? TEXT_ROWS_UPPER : TEXT_ROWS_LOWER;
-
   const activeStyle = "active:bg-primary active:text-primary-foreground active:scale-95 transition-all";
 
   const renderKey = (key: string) => {
@@ -224,7 +211,6 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         className={className}
         onPointerDown={(e) => {
           e.preventDefault();
-          e.stopPropagation();
           handleKey(key);
         }}
         tabIndex={-1}
@@ -235,16 +221,34 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     );
   };
 
-  return (
+  const rows = layout === "numeric" ? NUMERIC_ROWS : shifted ? TEXT_ROWS_UPPER : TEXT_ROWS_LOWER;
+
+  const keyboardContent = minimized ? (
+    <div
+      ref={keyboardRef}
+      data-virtual-keyboard="true"
+      className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 flex justify-center"
+    >
+      <Button
+        variant="outline"
+        size="sm"
+        className={`min-h-[44px] px-6 gap-2 ${activeStyle}`}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          setMinimized(false);
+        }}
+        tabIndex={-1}
+        type="button"
+      >
+        <ChevronUp className="h-4 w-4" />
+        Vis tastatur
+      </Button>
+    </div>
+  ) : (
     <div
       ref={keyboardRef}
       data-virtual-keyboard="true"
       className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 safe-area-bottom animate-in slide-in-from-bottom duration-200"
-      onPointerDown={stopPropagation}
-      onTouchStart={stopPropagation}
-      onTouchEnd={stopPropagation}
-      onClick={stopPropagation}
-      onMouseDown={stopPropagation}
     >
       <div className={`max-w-2xl mx-auto space-y-1 ${layout === "numeric" ? "max-w-xs" : ""}`}>
         {rows.map((row, i) => (
@@ -255,4 +259,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       </div>
     </div>
   );
+
+  // Portal to document.body so keyboard is in the same stacking context as Radix portals
+  return createPortal(keyboardContent, document.body);
 }
