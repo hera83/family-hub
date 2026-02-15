@@ -47,36 +47,16 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
-  const portalRef = useRef<HTMLDivElement | null>(null);
-  const [portalReady, setPortalReady] = useState(false);
 
-  // Create a dedicated portal container that is ALWAYS the last child of body.
-  // This ensures it sits above all Radix UI portals (Dialog, Sheet, Popover etc.)
-  // in both z-index and DOM order, so hover/pointer events reach the keyboard.
+  // Toggle body class to signal overlays to disable pointer-events
   useEffect(() => {
-    const container = document.createElement("div");
-    container.id = "virtual-keyboard-portal";
-    container.style.position = "relative";
-    container.style.zIndex = "99999";
-    document.body.appendChild(container);
-    portalRef.current = container;
-    setPortalReady(true);
-
-    // Use MutationObserver to re-append if new elements (like Radix portals) are added after us
-    const observer = new MutationObserver(() => {
-      if (container.parentNode === document.body && container !== document.body.lastElementChild) {
-        document.body.appendChild(container);
-      }
-    });
-    observer.observe(document.body, { childList: true });
-
-    return () => {
-      observer.disconnect();
-      container.remove();
-      portalRef.current = null;
-      setPortalReady(false);
-    };
-  }, []);
+    if (visible) {
+      document.body.classList.add("vkb-active");
+    } else {
+      document.body.classList.remove("vkb-active");
+    }
+    return () => document.body.classList.remove("vkb-active");
+  }, [visible]);
 
   // Show keyboard on focusin
   useEffect(() => {
@@ -183,7 +163,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     }
   }, [shifted]);
 
-  if (!enabled || !visible || !portalReady || !portalRef.current) return null;
+  if (!enabled || !visible) return null;
 
   const activeStyle = "active:bg-primary active:text-primary-foreground active:scale-95 transition-all hover:bg-accent hover:text-accent-foreground";
 
@@ -266,6 +246,5 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     </div>
   );
 
-  // Portal into our dedicated container that is always last in body (above Radix portals)
-  return createPortal(keyboardContent, portalRef.current);
+  return createPortal(keyboardContent, document.body);
 }

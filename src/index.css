@@ -119,6 +119,11 @@
   cursor: none !important;
 }
 
+/* Allow clicks through overlay to virtual keyboard */
+body.vkb-active [data-keyboard-overlay] {
+  pointer-events: none;
+}
+
 /* Dim overlay for inactivity */
 .dim-overlay {
   position: fixed;
