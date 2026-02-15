@@ -47,27 +47,12 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
-  const portalContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Create a dedicated portal container that's always the last child of body.
-  // This ensures the keyboard renders above Radix portals regardless of DOM order.
-  useEffect(() => {
-    const container = document.createElement("div");
-    container.id = "virtual-keyboard-portal";
-    container.style.position = "relative";
-    container.style.zIndex = "99999";
-    document.body.appendChild(container);
-    portalContainerRef.current = container;
-    return () => {
-      container.remove();
-      portalContainerRef.current = null;
-    };
-  }, []);
-
-  // Intercept Radix DismissableLayer's capture-phase listeners on document.
-  // Radix listens for pointerdown AND mousedown in capture phase to dismiss overlays.
-  // We block both when the event originates from the keyboard.
-  // React works fine without re-dispatch because createPortal handles event delegation.
+  // Block Radix DismissableLayer from detecting keyboard clicks as "outside" clicks.
+  // Radix registers pointerdown/mousedown on document to detect outside interactions.
+  // We intercept these in capture phase with stopImmediatePropagation when the target
+  // is inside the keyboard. React's portal event delegation still works because
+  // createPortal handles it through the fiber tree, not DOM event propagation.
   useEffect(() => {
     if (!visible) return;
 
@@ -78,7 +63,6 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       }
     };
 
-    // Radix uses both pointerdown and mousedown for DismissableLayer
     document.addEventListener("pointerdown", blockIfKeyboard, { capture: true });
     document.addEventListener("mousedown", blockIfKeyboard, { capture: true });
     document.addEventListener("touchstart", blockIfKeyboard, { capture: true });
@@ -277,14 +261,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     </div>
   );
 
-  // Portal into our dedicated container (always last in body, above Radix portals)
-  const container = portalContainerRef.current;
-  if (!container) return null;
-
-  // Ensure our container is always the last child of body (after any Radix portals)
-  if (container !== document.body.lastElementChild) {
-    document.body.appendChild(container);
-  }
-
-  return createPortal(keyboardContent, container);
+  // Portal directly to document.body — NOT to a custom container.
+  // Custom containers break React's portal event delegation.
+  return createPortal(keyboardContent, document.body);
 }
