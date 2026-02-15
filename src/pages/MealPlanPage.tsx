@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -215,6 +215,34 @@ export default function MealPlanPage() {
     setDragDay(null);
   };
 
+  // Touch-based drag for tablets
+  const touchDragDay = useRef<number | null>(null);
+  const dayRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const handleTouchStart = useCallback((dayIndex: number, e: React.TouchEvent) => {
+    const recipe = getMealForDay(dayIndex);
+    if (!recipe) return;
+    touchDragDay.current = dayIndex;
+  }, [mealPlans]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (touchDragDay.current === null) return;
+    const touch = e.changedTouches[0];
+    const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+    
+    // Find which day card we landed on
+    for (let i = 0; i < 7; i++) {
+      if (dayRefs.current[i]?.contains(targetEl as Node)) {
+        if (i !== touchDragDay.current) {
+          swapMeals.mutate({ fromDay: touchDragDay.current, toDay: i });
+        }
+        break;
+      }
+    }
+    touchDragDay.current = null;
+    setDragDay(null);
+  }, [swapMeals]);
+
   const selectRecipe = (recipeId: string) => {
     if (selectingDay !== null) {
       setMealPlan.mutate({ dayOfWeek: selectingDay, recipeId });
@@ -248,13 +276,17 @@ export default function MealPlanPage() {
           return (
             <div
               key={day}
-              className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-md ${
+              ref={(el) => { dayRefs.current[i] = el; }}
+              className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-md select-none ${
                 dragDay === i ? "opacity-50" : ""
               }`}
+              style={{ touchAction: "auto", WebkitUserSelect: "none", userSelect: "none" }}
               draggable={!!recipe}
               onDragStart={() => handleDragStart(i)}
               onDragOver={handleDragOver}
               onDrop={() => handleDrop(i)}
+              onTouchStart={(e) => handleTouchStart(i, e)}
+              onTouchEnd={handleTouchEnd}
               onClick={() => !recipe && setSelectingDay(i)}
             >
               <div className="bg-muted px-3 py-2 text-sm font-medium text-center">{day}</div>
