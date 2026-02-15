@@ -47,14 +47,36 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
+  const portalRef = useRef<HTMLDivElement | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
 
-  // Radix DismissableLayer dismissal is prevented via onPointerDownOutside /
-  // onInteractOutside / onFocusOutside handlers on each Radix overlay component
-  // (Dialog, Sheet, Popover, DropdownMenu). Those handlers call preventDefault()
-  // when [data-virtual-keyboard] is present. We do NOT use stopImmediatePropagation
-  // on document because that kills React's own event delegation (React 18 listens
-  // on the root container, not document, so blocking at document capture phase
-  // prevents all React handlers from firing — making the keyboard buttons dead).
+  // Create a dedicated portal container that is ALWAYS the last child of body.
+  // This ensures it sits above all Radix UI portals (Dialog, Sheet, Popover etc.)
+  // in both z-index and DOM order, so hover/pointer events reach the keyboard.
+  useEffect(() => {
+    const container = document.createElement("div");
+    container.id = "virtual-keyboard-portal";
+    container.style.position = "relative";
+    container.style.zIndex = "99999";
+    document.body.appendChild(container);
+    portalRef.current = container;
+    setPortalReady(true);
+
+    // Use MutationObserver to re-append if new elements (like Radix portals) are added after us
+    const observer = new MutationObserver(() => {
+      if (container.parentNode === document.body && container !== document.body.lastElementChild) {
+        document.body.appendChild(container);
+      }
+    });
+    observer.observe(document.body, { childList: true });
+
+    return () => {
+      observer.disconnect();
+      container.remove();
+      portalRef.current = null;
+      setPortalReady(false);
+    };
+  }, []);
 
   // Show keyboard on focusin
   useEffect(() => {
@@ -161,9 +183,9 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     }
   }, [shifted]);
 
-  if (!enabled || !visible) return null;
+  if (!enabled || !visible || !portalReady || !portalRef.current) return null;
 
-  const activeStyle = "active:bg-primary active:text-primary-foreground active:scale-95 transition-all";
+  const activeStyle = "active:bg-primary active:text-primary-foreground active:scale-95 transition-all hover:bg-accent hover:text-accent-foreground";
 
   const renderKey = (key: string) => {
     let content: React.ReactNode = key;
@@ -211,7 +233,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     <div
       ref={keyboardRef}
       data-virtual-keyboard="true"
-      className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 flex justify-center"
+      className="fixed bottom-0 left-0 right-0 z-[99999] bg-background border-t shadow-lg p-2 pb-4 flex justify-center"
     >
       <Button
         variant="outline"
@@ -232,7 +254,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     <div
       ref={keyboardRef}
       data-virtual-keyboard="true"
-      className="fixed bottom-0 left-0 right-0 z-[9999] bg-background border-t shadow-lg p-2 pb-4 safe-area-bottom animate-in slide-in-from-bottom duration-200"
+      className="fixed bottom-0 left-0 right-0 z-[99999] bg-background border-t shadow-lg p-2 pb-4 safe-area-bottom animate-in slide-in-from-bottom duration-200"
     >
       <div className={`max-w-2xl mx-auto space-y-1 ${layout === "numeric" ? "max-w-xs" : ""}`}>
         {rows.map((row, i) => (
@@ -244,7 +266,6 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     </div>
   );
 
-  // Portal directly to document.body — NOT to a custom container.
-  // Custom containers break React's portal event delegation.
-  return createPortal(keyboardContent, document.body);
+  // Portal into our dedicated container that is always last in body (above Radix portals)
+  return createPortal(keyboardContent, portalRef.current);
 }
