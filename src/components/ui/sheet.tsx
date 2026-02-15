@@ -5,7 +5,9 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Sheet = SheetPrimitive.Root;
+const Sheet = (props: React.ComponentPropsWithoutRef<typeof SheetPrimitive.Root>) => (
+  <SheetPrimitive.Root {...props} modal={false} />
+);
 
 const SheetTrigger = SheetPrimitive.Trigger;
 
@@ -59,6 +61,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
       <SheetPrimitive.Content
         ref={ref}
         {...props}
+        
         className={cn(sheetVariants({ side }), className)}
         onPointerDownOutside={(e) => {
           if (document.querySelector("[data-virtual-keyboard]")) e.preventDefault();
