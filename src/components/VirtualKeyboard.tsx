@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Delete, CornerDownLeft, Space, ChevronUp, ChevronDown } from "lucide-react";
+import { useVirtualKeyboardPortal } from "@/components/VirtualKeyboardContext";
 
 type KeyboardLayout = "text" | "numeric";
 
@@ -47,6 +48,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
+  const portalCtx = useVirtualKeyboardPortal();
 
   // Toggle body class to signal overlays to disable pointer-events
   useEffect(() => {
@@ -195,6 +197,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         key={key}
         variant={key === "SHIFT" && shifted ? "default" : "outline"}
         className={className}
+        onMouseDown={(e) => e.preventDefault()}
         onPointerDown={(e) => {
           e.preventDefault();
           handleKey(key);
@@ -209,16 +212,24 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
 
   const rows = layout === "numeric" ? NUMERIC_ROWS : shifted ? TEXT_ROWS_UPPER : TEXT_ROWS_LOWER;
 
+  // Determine if we should render inside a dialog container
+  const dialogContainer = portalCtx?.containerRef.current;
+  const isEmbedded = !!dialogContainer;
+
+  // Always use fixed positioning - the key difference is WHERE in the DOM tree it renders
+  const positionClass = "fixed bottom-0 left-0 right-0 z-[99999]";
+
   const keyboardContent = minimized ? (
     <div
       ref={keyboardRef}
       data-virtual-keyboard="true"
-      className="fixed bottom-0 left-0 right-0 z-[99999] bg-background border-t shadow-lg p-2 pb-4 flex justify-center"
+      className={`${positionClass} bg-background border-t shadow-lg p-2 pb-4 flex justify-center`}
     >
       <Button
         variant="outline"
         size="sm"
         className={`min-h-[44px] px-6 gap-2 ${activeStyle}`}
+        onMouseDown={(e) => e.preventDefault()}
         onPointerDown={(e) => {
           e.preventDefault();
           setMinimized(false);
@@ -234,7 +245,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     <div
       ref={keyboardRef}
       data-virtual-keyboard="true"
-      className="fixed bottom-0 left-0 right-0 z-[99999] bg-background border-t shadow-lg p-2 pb-4 safe-area-bottom animate-in slide-in-from-bottom duration-200"
+      className={`${positionClass} bg-background border-t shadow-lg p-2 pb-4 safe-area-bottom animate-in slide-in-from-bottom duration-200`}
     >
       <div className={`max-w-2xl mx-auto space-y-1 ${layout === "numeric" ? "max-w-xs" : ""}`}>
         {rows.map((row, i) => (
@@ -245,6 +256,11 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       </div>
     </div>
   );
+
+  // If embedded inside a dialog/sheet, render into that container; otherwise portal to body
+  if (isEmbedded) {
+    return createPortal(keyboardContent, dialogContainer);
+  }
 
   return createPortal(keyboardContent, document.body);
 }
