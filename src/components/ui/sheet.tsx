@@ -60,20 +60,13 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
         {...props}
         className={cn(sheetVariants({ side }), className)}
         onPointerDownOutside={(e) => {
-          const target = (e as any).detail?.originalEvent?.target as Element | null;
-          if (target?.closest?.("[data-virtual-keyboard]")) {
-            e.preventDefault();
-          }
+          if (document.querySelector("[data-virtual-keyboard]")) e.preventDefault();
         }}
         onInteractOutside={(e) => {
-          const target = (e as any).detail?.originalEvent?.target as Element | null;
-          if (target?.closest?.("[data-virtual-keyboard]")) {
-            e.preventDefault();
-          }
+          if (document.querySelector("[data-virtual-keyboard]")) e.preventDefault();
         }}
         onFocusOutside={(e) => {
-          const keyboard = document.querySelector("[data-virtual-keyboard]");
-          if (keyboard) e.preventDefault();
+          if (document.querySelector("[data-virtual-keyboard]")) e.preventDefault();
         }}
       >
         {children}
