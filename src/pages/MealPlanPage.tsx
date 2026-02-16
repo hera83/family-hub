@@ -39,7 +39,7 @@ function convertToPackages(recipeQty: number, recipeUnit: string, productSizeLab
   return Math.ceil(recipe.value / product.value);
 }
 
-async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remove") {
+async function syncShoppingListForMealPlan(recipeId: string, mealPlanId: string, action: "add" | "remove") {
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
     .select("*, products(name, category_id, unit, size_label, is_staple)")
@@ -58,38 +58,24 @@ async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remo
         ing.products?.unit || null
       );
 
-      const { data: existing } = await supabase
-        .from("shopping_list_items")
-        .select("*")
-        .eq("source_type", "recipe")
-        .eq("recipe_id", recipeId)
-        .eq("product_id", ing.product_id)
-        .maybeSingle();
-
-      if (existing) {
-        await supabase.from("shopping_list_items")
-          .update({ quantity: existing.quantity + qty })
-          .eq("id", existing.id);
-      } else {
-        await supabase.from("shopping_list_items").insert({
-          product_name: ing.products?.name || ing.name || "Ukendt",
-          product_id: ing.product_id,
-          category_id: ing.products?.category_id || null,
-          quantity: qty,
-          unit: ing.products?.unit || ing.unit || "stk",
-          source_type: "recipe",
-          recipe_id: recipeId,
-          recipe_qty: ing.quantity,
-          recipe_unit: ing.unit || "stk",
-        });
-      }
+      await supabase.from("shopping_list_items").insert({
+        product_name: ing.products?.name || ing.name || "Ukendt",
+        product_id: ing.product_id,
+        category_id: ing.products?.category_id || null,
+        quantity: qty,
+        unit: ing.products?.unit || ing.unit || "stk",
+        source_type: "recipe",
+        recipe_id: recipeId,
+        recipe_qty: ing.quantity,
+        recipe_unit: ing.unit || "stk",
+        meal_plan_id: mealPlanId,
+      } as any);
     }
   } else {
     await supabase
       .from("shopping_list_items")
       .delete()
-      .eq("source_type", "recipe")
-      .eq("recipe_id", recipeId)
+      .eq("meal_plan_id", mealPlanId)
       .eq("is_ordered", false);
   }
 }
@@ -126,36 +112,33 @@ export default function MealPlanPage() {
     },
   });
 
-  // Fetch order status per recipe_id in one query
-  const recipeIdsInWeek = useMemo(() => {
-    return mealPlans
-      .map((mp: any) => mp.recipe_id)
-      .filter(Boolean) as string[];
+  // Fetch order status per meal_plan entry id in one query
+  const mealPlanIds = useMemo(() => {
+    return mealPlans.map((mp: any) => mp.id).filter(Boolean) as string[];
   }, [mealPlans]);
 
-  const { data: recipeOrderStatus = {} } = useQuery({
-    queryKey: ["recipe_order_status", recipeIdsInWeek],
-    enabled: recipeIdsInWeek.length > 0,
+  const { data: mealPlanOrderStatus = {} } = useQuery({
+    queryKey: ["meal_plan_order_status", mealPlanIds],
+    enabled: mealPlanIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase
         .from("shopping_list_items")
-        .select("recipe_id, is_ordered, ordered_at, order_id")
-        .eq("source_type", "recipe")
-        .in("recipe_id", recipeIdsInWeek);
+        .select("meal_plan_id, is_ordered, ordered_at")
+        .in("meal_plan_id", mealPlanIds);
 
       if (!data) return {};
 
       const statusMap: Record<string, { total: number; ordered: number; latestOrderedAt: string | null }> = {};
       data.forEach((item: any) => {
-        if (!item.recipe_id) return;
-        if (!statusMap[item.recipe_id]) {
-          statusMap[item.recipe_id] = { total: 0, ordered: 0, latestOrderedAt: null };
+        if (!item.meal_plan_id) return;
+        if (!statusMap[item.meal_plan_id]) {
+          statusMap[item.meal_plan_id] = { total: 0, ordered: 0, latestOrderedAt: null };
         }
-        statusMap[item.recipe_id].total++;
+        statusMap[item.meal_plan_id].total++;
         if (item.is_ordered) {
-          statusMap[item.recipe_id].ordered++;
-          if (!statusMap[item.recipe_id].latestOrderedAt || item.ordered_at > statusMap[item.recipe_id].latestOrderedAt!) {
-            statusMap[item.recipe_id].latestOrderedAt = item.ordered_at;
+          statusMap[item.meal_plan_id].ordered++;
+          if (!statusMap[item.meal_plan_id].latestOrderedAt || item.ordered_at > statusMap[item.meal_plan_id].latestOrderedAt!) {
+            statusMap[item.meal_plan_id].latestOrderedAt = item.ordered_at;
           }
         }
       });
@@ -177,34 +160,36 @@ export default function MealPlanPage() {
       const existing = mealPlans.find((mp: any) => mp.day_of_week === dayOfWeek);
 
       if (existing?.recipe_id && existing.recipe_id !== recipeId) {
-        await syncShoppingListForRecipe(existing.recipe_id, "remove");
+        await syncShoppingListForMealPlan(existing.recipe_id, existing.id, "remove");
       }
 
       if (existing) {
         if (recipeId) {
           await supabase.from("meal_plans").update({ recipe_id: recipeId }).eq("id", existing.id);
+          await syncShoppingListForMealPlan(recipeId, existing.id, "add");
         } else {
+          await syncShoppingListForMealPlan(existing.recipe_id, existing.id, "remove");
           await supabase.from("meal_plans").delete().eq("id", existing.id);
         }
       } else if (recipeId) {
         const date = new Date(weekStart);
         date.setDate(date.getDate() + dayOfWeek);
-        await supabase.from("meal_plans").insert({
+        const { data: newPlan } = await supabase.from("meal_plans").insert({
           day_of_week: dayOfWeek,
           recipe_id: recipeId,
           week_start: weekStartStr,
           plan_date: format(date, "yyyy-MM-dd"),
-        });
-      }
+        }).select().single();
 
-      if (recipeId) {
-        await syncShoppingListForRecipe(recipeId, "add");
+        if (newPlan) {
+          await syncShoppingListForMealPlan(recipeId, newPlan.id, "add");
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meal_plans"] });
       queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
-      queryClient.invalidateQueries({ queryKey: ["recipe_order_status"] });
+      queryClient.invalidateQueries({ queryKey: ["meal_plan_order_status"] });
     },
   });
 
@@ -282,9 +267,9 @@ export default function MealPlanPage() {
     setMealPlan.mutate({ dayOfWeek: dayIndex, recipeId: null });
   };
 
-  const getStatusBadge = (recipeId: string | null) => {
-    if (!recipeId) return null;
-    const status = (recipeOrderStatus as Record<string, any>)[recipeId];
+  const getStatusBadge = (mealPlanId: string | null) => {
+    if (!mealPlanId) return null;
+    const status = (mealPlanOrderStatus as Record<string, any>)[mealPlanId];
     if (!status || status.total === 0) {
       return <Badge variant="outline" className="text-[10px] px-1.5 py-0 whitespace-nowrap bg-muted/50">Ikke på indkøbsliste</Badge>;
     }
@@ -319,7 +304,7 @@ export default function MealPlanPage() {
         {DAYS.map((day, i) => {
           const recipe = getMealForDay(i);
           const plan = mealPlans.find((mp: any) => mp.day_of_week === i);
-          const statusBadge = getStatusBadge(plan?.recipe_id);
+          const statusBadge = getStatusBadge(plan?.id);
           return (
             <div
               key={day}
