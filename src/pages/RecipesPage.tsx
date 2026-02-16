@@ -16,6 +16,20 @@ const PAGE_SIZE = 10;
 const UNITS = ["stk", "kg", "g", "l", "dl", "ml", "pakke", "spsk", "tsk", "dåse"];
 const DEFAULT_CATEGORIES = ["Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 
+function getDeletedCategories(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem("deleted_recipe_categories") || "[]");
+  } catch { return []; }
+}
+function addDeletedCategory(cat: string) {
+  const list = getDeletedCategories();
+  if (!list.includes(cat)) { list.push(cat); localStorage.setItem("deleted_recipe_categories", JSON.stringify(list)); }
+}
+function removeDeletedCategory(cat: string) {
+  const list = getDeletedCategories().filter(c => c !== cat);
+  localStorage.setItem("deleted_recipe_categories", JSON.stringify(list));
+}
+
 const emptyRecipe = {
   title: "", image_url: "", description: "", category: "Hovedret", prep_time: 30 as number | string, wait_time: 0 as number | string,
   instructions: "", is_manual: true, is_favorite: false,
@@ -78,8 +92,9 @@ export default function RecipesPage() {
   });
 
   const categories = useMemo(() => {
-    const cats = new Set<string>(DEFAULT_CATEGORIES);
-    allRecipes.forEach((r: any) => { if (r.category) cats.add(r.category); });
+    const deleted = getDeletedCategories();
+    const cats = new Set<string>(DEFAULT_CATEGORIES.filter(c => !deleted.includes(c)));
+    allRecipes.forEach((r: any) => { if (r.category && !deleted.includes(r.category)) cats.add(r.category); });
     return ["Alle", ...Array.from(cats)];
   }, [allRecipes]);
 
@@ -422,8 +437,7 @@ export default function RecipesPage() {
               <Button
                 onClick={() => {
                   if (newCategory.trim()) {
-                    // Just adding to the list - it'll appear when a recipe uses it
-                    // We need to create at least one recipe or just add it
+                    removeDeletedCategory(newCategory.trim());
                     queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
                     setNewCategory("");
                   }
@@ -452,6 +466,7 @@ export default function RecipesPage() {
             <AlertDialogAction className="min-h-[44px]" onClick={async () => {
               if (!deletingCategory) return;
               await supabase.from("recipes").update({ category: null }).eq("category", deletingCategory);
+              addDeletedCategory(deletingCategory);
               queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
               queryClient.invalidateQueries({ queryKey: ["recipes"] });
               queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });

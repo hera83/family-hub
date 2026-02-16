@@ -69,7 +69,7 @@ async function syncShoppingListForMealPlan(recipeId: string, mealPlanId: string,
         recipe_qty: ing.quantity,
         recipe_unit: ing.unit || "stk",
         meal_plan_id: mealPlanId,
-      } as any);
+      });
     }
   } else {
     await supabase
