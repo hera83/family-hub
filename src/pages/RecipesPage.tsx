@@ -239,10 +239,17 @@ export default function RecipesPage() {
   const updateField = (field: string, value: any) => setFormData((f) => ({ ...f, [field]: value }));
 
   const addIngredientFromProduct = (product: any) => {
-    setIngredients((prev) => [
-      ...prev,
-      { product_id: product.id, product_name: product.name, quantity: 1, unit: product.unit || "stk", is_staple: false },
-    ]);
+    setIngredients((prev) => {
+      // If product already exists (and not deleted), increase quantity instead
+      const existingIdx = prev.findIndex((i) => i.product_id === product.id && !i._deleted);
+      if (existingIdx !== -1) {
+        return prev.map((ing, i) => i === existingIdx ? { ...ing, quantity: ing.quantity + 1 } : ing);
+      }
+      return [
+        ...prev,
+        { product_id: product.id, product_name: product.name, quantity: 1, unit: product.unit || "stk", is_staple: false },
+      ];
+    });
     setIngredientSearch("");
   };
 
@@ -252,7 +259,11 @@ export default function RecipesPage() {
 
   const removeIngredient = (index: number) => {
     setIngredients((prev) =>
-      prev.map((ing, i) => (i === index ? (ing.id ? { ...ing, _deleted: true } : ing) : ing)).filter((ing) => !(!ing.id && ing._deleted))
+      prev.map((ing, i) => {
+        if (i !== index) return ing;
+        // If it has a DB id, mark as deleted; otherwise remove it
+        return ing.id ? { ...ing, _deleted: true } : { ...ing, _deleted: true };
+      }).filter((ing) => !(ing._deleted && !ing.id))
     );
   };
 
