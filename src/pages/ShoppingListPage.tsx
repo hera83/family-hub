@@ -422,7 +422,11 @@ export default function ShoppingListPage() {
       await supabase.from("order_lines").insert(lines);
 
       const ids = unchecked.map((i: any) => i.id);
-      await supabase.from("shopping_list_items").update({ is_ordered: true }).in("id", ids);
+      await supabase.from("shopping_list_items").update({
+        is_ordered: true,
+        order_id: order.id,
+        ordered_at: new Date().toISOString(),
+      }).in("id", ids);
       await supabase.from("shopping_list_items").delete().in("id", ids);
     },
     onSuccess: () => {

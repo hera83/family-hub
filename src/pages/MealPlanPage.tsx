@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight, X, UtensilsCrossed, ArrowLeftRight, Flag } from "lucide-react";
 import { format, startOfWeek, addWeeks, subWeeks } from "date-fns";
@@ -47,7 +48,6 @@ async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remo
 
   if (action === "add") {
     for (const ing of ingredients) {
-      // Skip staple items
       if (ing.is_staple) continue;
 
       const qty = convertToPackages(
@@ -84,7 +84,6 @@ async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remo
       }
     }
   } else {
-    // Remove: only delete items that haven't been ordered yet
     await supabase
       .from("shopping_list_items")
       .delete()
@@ -125,30 +124,40 @@ export default function MealPlanPage() {
     },
   });
 
-  // Check which recipes have ordered items on shopping list
-  const { data: orderedRecipeIds = [] } = useQuery({
-    queryKey: ["ordered_recipe_ids"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("shopping_list_items")
-        .select("recipe_id")
-        .eq("source_type", "recipe")
-        .eq("is_ordered", true);
-      if (!data) return [];
-      return [...new Set(data.map((d: any) => d.recipe_id).filter(Boolean))];
-    },
-  });
+  // Fetch order status per recipe_id in one query
+  const recipeIdsInWeek = useMemo(() => {
+    return mealPlans
+      .map((mp: any) => mp.recipe_id)
+      .filter(Boolean) as string[];
+  }, [mealPlans]);
 
-  // Also check items currently on shopping list for each recipe
-  const { data: shoppingRecipeIds = [] } = useQuery({
-    queryKey: ["shopping_recipe_ids"],
+  const { data: recipeOrderStatus = {} } = useQuery({
+    queryKey: ["recipe_order_status", recipeIdsInWeek],
+    enabled: recipeIdsInWeek.length > 0,
     queryFn: async () => {
       const { data } = await supabase
         .from("shopping_list_items")
-        .select("recipe_id")
-        .eq("source_type", "recipe");
-      if (!data) return [];
-      return [...new Set(data.map((d: any) => d.recipe_id).filter(Boolean))];
+        .select("recipe_id, is_ordered, ordered_at")
+        .eq("source_type", "recipe")
+        .in("recipe_id", recipeIdsInWeek);
+
+      if (!data) return {};
+
+      const statusMap: Record<string, { total: number; ordered: number; latestOrderedAt: string | null }> = {};
+      data.forEach((item: any) => {
+        if (!item.recipe_id) return;
+        if (!statusMap[item.recipe_id]) {
+          statusMap[item.recipe_id] = { total: 0, ordered: 0, latestOrderedAt: null };
+        }
+        statusMap[item.recipe_id].total++;
+        if (item.is_ordered) {
+          statusMap[item.recipe_id].ordered++;
+          if (!statusMap[item.recipe_id].latestOrderedAt || item.ordered_at > statusMap[item.recipe_id].latestOrderedAt!) {
+            statusMap[item.recipe_id].latestOrderedAt = item.ordered_at;
+          }
+        }
+      });
+      return statusMap;
     },
   });
 
@@ -193,7 +202,7 @@ export default function MealPlanPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meal_plans"] });
       queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
-      queryClient.invalidateQueries({ queryKey: ["shopping_recipe_ids"] });
+      queryClient.invalidateQueries({ queryKey: ["recipe_order_status"] });
     },
   });
 
@@ -271,6 +280,24 @@ export default function MealPlanPage() {
     setMealPlan.mutate({ dayOfWeek: dayIndex, recipeId: null });
   };
 
+  const getStatusBadge = (recipeId: string | null) => {
+    if (!recipeId) return null;
+    const status = (recipeOrderStatus as Record<string, any>)[recipeId];
+    if (!status) return null;
+
+    if (status.ordered === status.total && status.total > 0) {
+      // All ordered
+      const d = status.latestOrderedAt ? format(new Date(status.latestOrderedAt), "dd-MM-yyyy HH:mm") : "";
+      return <Badge variant="default" className="text-[10px] px-1.5 py-0 whitespace-nowrap">Bestilt d. {d}</Badge>;
+    }
+    if (status.ordered > 0) {
+      // Partial
+      return <Badge variant="secondary" className="text-[10px] px-1.5 py-0 whitespace-nowrap">{status.ordered}/{status.total} bestilt</Badge>;
+    }
+    // On shopping list but not ordered
+    return <Badge variant="outline" className="text-[10px] px-1.5 py-0 whitespace-nowrap">På indkøbsliste</Badge>;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -291,8 +318,7 @@ export default function MealPlanPage() {
         {DAYS.map((day, i) => {
           const recipe = getMealForDay(i);
           const plan = mealPlans.find((mp: any) => mp.day_of_week === i);
-          const isOrdered = recipe && (orderedRecipeIds as string[]).includes(plan?.recipe_id);
-          const isOnList = recipe && (shoppingRecipeIds as string[]).includes(plan?.recipe_id);
+          const statusBadge = getStatusBadge(plan?.recipe_id);
           return (
             <div
               key={day}
@@ -309,10 +335,8 @@ export default function MealPlanPage() {
               onTouchEnd={handleTouchEnd}
               onClick={() => !recipe && setSelectingDay(i)}
             >
-              <div className="bg-muted px-3 py-2 text-sm font-medium text-center flex items-center justify-center gap-1">
+              <div className="bg-muted px-3 py-2 text-sm font-medium text-center">
                 {day}
-                {isOrdered && <Flag className="h-3 w-3 text-green-600 fill-green-600" />}
-                {!isOrdered && isOnList && <Flag className="h-3 w-3 text-muted-foreground" />}
               </div>
               {recipe ? (
                 <div className="p-2 space-y-2">
@@ -328,6 +352,7 @@ export default function MealPlanPage() {
                     {recipe.prep_time && <span>🍳 {recipe.prep_time} min</span>}
                     {recipe.wait_time > 0 && <span className="ml-1">⏳ {recipe.wait_time} min</span>}
                   </div>
+                  {statusBadge && <div>{statusBadge}</div>}
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" className="min-h-[36px] min-w-[36px]" onClick={(e) => { e.stopPropagation(); setSelectingDay(i); }} title="Byt opskrift">
                       <ArrowLeftRight className="h-4 w-4" />
