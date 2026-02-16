@@ -90,7 +90,7 @@ export default function ShoppingListPage() {
   const { data: items = [] } = useQuery({
     queryKey: ["shopping_list_items"],
     queryFn: async () => {
-      const { data } = await supabase.from("shopping_list_items").select("*, item_categories(name, sort_order), recipes(title)").order("created_at");
+      const { data } = await supabase.from("shopping_list_items").select("*, item_categories(name, sort_order), recipes(title)").eq("is_ordered", false).order("created_at");
       return data || [];
     },
   });
@@ -427,7 +427,6 @@ export default function ShoppingListPage() {
         order_id: order.id,
         ordered_at: new Date().toISOString(),
       }).in("id", ids);
-      await supabase.from("shopping_list_items").delete().in("id", ids);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
