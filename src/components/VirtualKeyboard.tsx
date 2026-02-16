@@ -48,6 +48,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
+  const freshFocusRef = useRef(false);
   const portalCtx = useVirtualKeyboardPortal();
 
   // Toggle body class to signal overlays to disable pointer-events
@@ -78,6 +79,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         setShifted(false);
         setVisible(true);
         setMinimized(false);
+        freshFocusRef.current = isNumericInput(el);
 
         setTimeout(() => {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -119,6 +121,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     const end = el.selectionEnd ?? el.value.length;
 
     if (key === "BACKSPACE") {
+      freshFocusRef.current = false;
       if (start === end && start > 0) {
         const newVal = el.value.slice(0, start - 1) + el.value.slice(end);
         nativeInputValueSetter?.call(el, newVal);
@@ -156,6 +159,13 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       setLayout("text");
       return;
     } else {
+      if (freshFocusRef.current && isNumericInput(el)) {
+        nativeInputValueSetter?.call(el, key);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        freshFocusRef.current = false;
+        requestAnimationFrame(() => el.focus());
+        return;
+      }
       const newVal = el.value.slice(0, start) + key + el.value.slice(end);
       nativeInputValueSetter?.call(el, newVal);
       el.dispatchEvent(new Event("input", { bubbles: true }));
