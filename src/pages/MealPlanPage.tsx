@@ -42,14 +42,14 @@ function convertToPackages(recipeQty: number, recipeUnit: string, productSizeLab
 async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remove") {
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
-    .select("*, products(name, category_id, unit, size_label)")
+    .select("*, products(name, category_id, unit, size_label, is_staple)")
     .eq("recipe_id", recipeId);
 
   if (!ingredients || ingredients.length === 0) return;
 
   if (action === "add") {
     for (const ing of ingredients) {
-      if (ing.is_staple) continue;
+      if (ing.is_staple || ing.products?.is_staple) continue;
 
       const qty = convertToPackages(
         ing.quantity,
@@ -139,7 +139,7 @@ export default function MealPlanPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("shopping_list_items")
-        .select("recipe_id, is_ordered, ordered_at")
+        .select("recipe_id, is_ordered, ordered_at, order_id")
         .eq("source_type", "recipe")
         .in("recipe_id", recipeIdsInWeek);
 
@@ -285,18 +285,17 @@ export default function MealPlanPage() {
   const getStatusBadge = (recipeId: string | null) => {
     if (!recipeId) return null;
     const status = (recipeOrderStatus as Record<string, any>)[recipeId];
-    if (!status) return null;
+    if (!status || status.total === 0) {
+      return <Badge variant="outline" className="text-[10px] px-1.5 py-0 whitespace-nowrap bg-muted/50">Ikke på indkøbsliste</Badge>;
+    }
 
     if (status.ordered === status.total && status.total > 0) {
-      // All ordered
       const d = status.latestOrderedAt ? format(new Date(status.latestOrderedAt), "dd-MM-yyyy HH:mm") : "";
-      return <Badge variant="default" className="text-[10px] px-1.5 py-0 whitespace-nowrap">Bestilt d. {d}</Badge>;
+      return <Badge variant="default" className="text-[10px] px-1.5 py-0 whitespace-nowrap">Bestilt{d ? ` d. ${d}` : ""}</Badge>;
     }
     if (status.ordered > 0) {
-      // Partial
       return <Badge variant="secondary" className="text-[10px] px-1.5 py-0 whitespace-nowrap">{status.ordered}/{status.total} bestilt</Badge>;
     }
-    // On shopping list but not ordered
     return <Badge variant="outline" className="text-[10px] px-1.5 py-0 whitespace-nowrap">På indkøbsliste</Badge>;
   };
 
