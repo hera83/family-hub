@@ -51,15 +51,24 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
   const freshFocusRef = useRef(false);
   const portalCtx = useVirtualKeyboardPortal();
 
-  // Toggle body class to signal overlays to disable pointer-events
+  // Toggle body class + CSS variable for keyboard height
   useEffect(() => {
-    if (visible) {
+    if (visible && !minimized) {
       document.body.classList.add("vkb-active");
+      // Measure after render
+      requestAnimationFrame(() => {
+        const h = keyboardRef.current?.getBoundingClientRect().height ?? 260;
+        document.documentElement.style.setProperty("--vkb-height", `${h}px`);
+      });
     } else {
       document.body.classList.remove("vkb-active");
+      document.documentElement.style.removeProperty("--vkb-height");
     }
-    return () => document.body.classList.remove("vkb-active");
-  }, [visible]);
+    return () => {
+      document.body.classList.remove("vkb-active");
+      document.documentElement.style.removeProperty("--vkb-height");
+    };
+  }, [visible, minimized]);
 
   // Show keyboard on focusin
   useEffect(() => {

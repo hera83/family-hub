@@ -383,6 +383,8 @@ export type Database = {
           id: string
           is_checked: boolean
           is_ordered: boolean
+          order_id: string | null
+          ordered_at: string | null
           product_id: string | null
           product_name: string
           quantity: number
@@ -398,6 +400,8 @@ export type Database = {
           id?: string
           is_checked?: boolean
           is_ordered?: boolean
+          order_id?: string | null
+          ordered_at?: string | null
           product_id?: string | null
           product_name: string
           quantity?: number
@@ -413,6 +417,8 @@ export type Database = {
           id?: string
           is_checked?: boolean
           is_ordered?: boolean
+          order_id?: string | null
+          ordered_at?: string | null
           product_id?: string | null
           product_name?: string
           quantity?: number
@@ -428,6 +434,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "item_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopping_list_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
           {

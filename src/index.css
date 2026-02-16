@@ -124,6 +124,11 @@ body.vkb-active [data-keyboard-overlay] {
   pointer-events: none;
 }
 
+/* Add padding when virtual keyboard is visible */
+body.vkb-active {
+  padding-bottom: var(--vkb-height, 260px);
+}
+
 /* Keyboard portal container inside dialogs */
 [data-keyboard-portal-container] {
   /* Container exists in DOM as portal target but takes no space */

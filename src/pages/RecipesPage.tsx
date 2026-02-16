@@ -16,15 +16,21 @@ const UNITS = ["stk", "kg", "g", "l", "dl", "ml", "pakke", "spsk", "tsk", "dåse
 const DEFAULT_CATEGORIES = ["Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 
 const emptyRecipe = {
-  title: "", image_url: "", description: "", category: "Hovedret", prep_time: 30, wait_time: 0,
+  title: "", image_url: "", description: "", category: "Hovedret", prep_time: 30 as number | string, wait_time: 0 as number | string,
   instructions: "", is_manual: true, is_favorite: false,
 };
 
+let clientIdCounter = 0;
+function nextClientId() {
+  return `_client_${++clientIdCounter}_${Date.now()}`;
+}
+
 type IngredientRow = {
   id?: string;
+  client_id: string;
   product_id: string | null;
   product_name: string;
-  quantity: number;
+  quantity: number | string;
   unit: string;
   is_staple: boolean;
   _deleted?: boolean;
@@ -95,9 +101,10 @@ export default function RecipesPage() {
         .select("*, products(name)")
         .eq("recipe_id", editingRecipe.id)
         .then(({ data }) => {
-          setIngredients(
+        setIngredients(
             (data || []).map((ing: any) => ({
               id: ing.id,
+              client_id: nextClientId(),
               product_id: ing.product_id,
               product_name: ing.products?.name || ing.name || "",
               quantity: ing.quantity,
@@ -144,7 +151,7 @@ export default function RecipesPage() {
         await supabase.from("recipe_ingredients").update({
           product_id: ing.product_id,
           name: ing.product_name,
-          quantity: ing.quantity,
+          quantity: Number(ing.quantity) || 1,
           unit: ing.unit,
           is_staple: ing.is_staple,
         }).eq("id", ing.id!);
@@ -156,7 +163,7 @@ export default function RecipesPage() {
             recipe_id: recipeId,
             product_id: ing.product_id,
             name: ing.product_name,
-            quantity: ing.quantity,
+            quantity: Number(ing.quantity) || 1,
             unit: ing.unit,
             is_staple: ing.is_staple,
           }))
@@ -226,6 +233,7 @@ export default function RecipesPage() {
     });
     setIngredients(
       (srcIngredients || []).map((ing: any) => ({
+        client_id: nextClientId(),
         product_id: ing.product_id,
         product_name: ing.products?.name || ing.name || "",
         quantity: ing.quantity,
@@ -240,14 +248,13 @@ export default function RecipesPage() {
 
   const addIngredientFromProduct = (product: any) => {
     setIngredients((prev) => {
-      // If product already exists (and not deleted), increase quantity instead
       const existingIdx = prev.findIndex((i) => i.product_id === product.id && !i._deleted);
       if (existingIdx !== -1) {
-        return prev.map((ing, i) => i === existingIdx ? { ...ing, quantity: ing.quantity + 1 } : ing);
+        return prev.map((ing, i) => i === existingIdx ? { ...ing, quantity: Number(ing.quantity) + 1 } : ing);
       }
       return [
         ...prev,
-        { product_id: product.id, product_name: product.name, quantity: 1, unit: product.unit || "stk", is_staple: false },
+        { client_id: nextClientId(), product_id: product.id, product_name: product.name, quantity: 1, unit: product.unit || "stk", is_staple: false },
       ];
     });
     setIngredientSearch("");
@@ -258,13 +265,16 @@ export default function RecipesPage() {
   };
 
   const removeIngredient = (index: number) => {
-    setIngredients((prev) =>
-      prev.map((ing, i) => {
-        if (i !== index) return ing;
-        // If it has a DB id, mark as deleted; otherwise remove it
-        return ing.id ? { ...ing, _deleted: true } : { ...ing, _deleted: true };
-      }).filter((ing) => !(ing._deleted && !ing.id))
-    );
+    setIngredients((prev) => {
+      const ing = prev[index];
+      if (!ing) return prev;
+      if (!ing.id) {
+        // New ingredient – remove from state entirely
+        return prev.filter((_, i) => i !== index);
+      }
+      // Existing in DB – mark deleted
+      return prev.map((item, i) => i === index ? { ...item, _deleted: true } : item);
+    });
   };
 
   const activeIngredients = ingredients.filter((i) => !i._deleted);
@@ -480,8 +490,8 @@ export default function RecipesPage() {
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div><Label>Køkkentid (min)</Label><Input type="number" value={formData.prep_time} onChange={(e) => updateField("prep_time", Number(e.target.value))} className="min-h-[44px]" /></div>
-                  <div><Label>Ventetid (min)</Label><Input type="number" value={formData.wait_time} onChange={(e) => updateField("wait_time", Number(e.target.value))} className="min-h-[44px]" /></div>
+              <div><Label>Køkkentid (min)</Label><Input type="number" value={formData.prep_time} onChange={(e) => updateField("prep_time", e.target.value === "" ? "" : e.target.value)} onBlur={() => updateField("prep_time", formData.prep_time === "" ? 0 : Number(formData.prep_time))} className="min-h-[44px]" /></div>
+                  <div><Label>Ventetid (min)</Label><Input type="number" value={formData.wait_time} onChange={(e) => updateField("wait_time", e.target.value === "" ? "" : e.target.value)} onBlur={() => updateField("wait_time", formData.wait_time === "" ? 0 : Number(formData.wait_time))} className="min-h-[44px]" /></div>
                 </div>
                 <div>
                   <Label>Fremgangsmåde</Label>
@@ -505,10 +515,10 @@ export default function RecipesPage() {
                     <p className="text-sm text-muted-foreground py-2">Ingen ingredienser tilføjet endnu</p>
                   )}
 
-                  {activeIngredients.map((ing, idx) => {
+                  {activeIngredients.map((ing) => {
                     const realIndex = ingredients.findIndex((i) => i === ing);
                     return (
-                      <div key={idx} className="flex items-center gap-2">
+                      <div key={ing.id ?? ing.client_id} className="flex items-center gap-2">
                         <div className="flex items-center gap-1 flex-1 min-w-0">
                           <Checkbox
                             checked={ing.is_staple}
@@ -524,7 +534,8 @@ export default function RecipesPage() {
                         <Input
                           type="number"
                           value={ing.quantity}
-                          onChange={(e) => updateIngredient(realIndex, "quantity", Number(e.target.value))}
+                          onChange={(e) => updateIngredient(realIndex, "quantity", e.target.value === "" ? "" : e.target.value)}
+                          onBlur={() => updateIngredient(realIndex, "quantity", ing.quantity === "" ? 1 : Number(ing.quantity))}
                           className="w-20 min-h-[36px]"
                           min={0.1}
                           step={0.1}
@@ -557,8 +568,8 @@ export default function RecipesPage() {
                   onClick={() => {
                     const payload = {
                       ...formData,
-                      prep_time: formData.prep_time || null,
-                      wait_time: formData.wait_time || null,
+                      prep_time: formData.prep_time === "" ? null : (Number(formData.prep_time) || null),
+                      wait_time: formData.wait_time === "" ? null : (Number(formData.wait_time) || null),
                       image_url: formData.image_url || null,
                     };
                     if (editingRecipe) (payload as any).id = editingRecipe.id;
