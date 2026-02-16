@@ -143,3 +143,30 @@ body.vkb-active {
   pointer-events: all;
   transition: opacity 0.5s ease;
 }
+
+/* Print styles for cook recipe page */
+@media print {
+  body {
+    padding: 0 !important;
+  }
+  header, nav, aside, footer,
+  [data-sidebar], .print\\:hidden,
+  .dim-overlay {
+    display: none !important;
+  }
+  .cook-recipe-page {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 1rem !important;
+  }
+  .cook-recipe-page img {
+    max-height: 200px;
+    object-fit: cover;
+  }
+  .cook-recipe-page h1 {
+    font-size: 1.5rem;
+  }
+  .cook-recipe-page li {
+    break-inside: avoid;
+  }
+}

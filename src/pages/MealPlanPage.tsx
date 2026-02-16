@@ -1,12 +1,13 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, ChevronRight, X, UtensilsCrossed, ArrowLeftRight, Flag } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, UtensilsCrossed, ArrowLeftRight, Flag, CookingPot } from "lucide-react";
 import { format, startOfWeek, addWeeks, subWeeks } from "date-fns";
 import { da } from "date-fns/locale";
 
@@ -95,6 +96,7 @@ async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remo
 
 export default function MealPlanPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectingDay, setSelectingDay] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -354,6 +356,9 @@ export default function MealPlanPage() {
                   </div>
                   {statusBadge && <div>{statusBadge}</div>}
                   <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" className="min-h-[36px] min-w-[36px]" onClick={(e) => { e.stopPropagation(); navigate(`/cook/${plan?.recipe_id}`); }} title="Lav opskrift">
+                      <CookingPot className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" className="min-h-[36px] min-w-[36px]" onClick={(e) => { e.stopPropagation(); setSelectingDay(i); }} title="Byt opskrift">
                       <ArrowLeftRight className="h-4 w-4" />
                     </Button>
