@@ -5,14 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, ChevronRight, X, UtensilsCrossed } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, UtensilsCrossed, ArrowLeftRight, Flag } from "lucide-react";
 import { format, startOfWeek, addWeeks, subWeeks } from "date-fns";
 import { da } from "date-fns/locale";
 
 const DAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
 const CATEGORIES = ["Alle", "Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 
-// Unit conversion: normalize quantity to a base unit (g for weight, ml for volume)
 function normalizeToBase(qty: number, unit: string): { value: number; type: "weight" | "volume" | "unknown" } {
   const u = unit.toLowerCase().trim();
   if (u === "kg") return { value: qty * 1000, type: "weight" };
@@ -26,26 +25,19 @@ function normalizeToBase(qty: number, unit: string): { value: number; type: "wei
 
 function convertToPackages(recipeQty: number, recipeUnit: string, productSizeLabel: string | null, productUnit: string | null): number {
   if (!productSizeLabel || !productUnit) return recipeQty;
-
-  // Parse numeric value from size_label (e.g. "500" from "500 g" or just "500")
   const sizeMatch = productSizeLabel.match(/(\d+(?:[.,]\d+)?)/);
   if (!sizeMatch) return recipeQty;
   const productSize = parseFloat(sizeMatch[1].replace(",", "."));
   if (productSize <= 0) return recipeQty;
-
   const recipe = normalizeToBase(recipeQty, recipeUnit);
   const product = normalizeToBase(productSize, productUnit);
-
-  // Only convert if both are the same type (weight or volume)
   if (recipe.type === "unknown" || product.type === "unknown" || recipe.type !== product.type) {
     return recipeQty;
   }
-
   return Math.ceil(recipe.value / product.value);
 }
 
 async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remove") {
-  // Fetch recipe ingredients with product info
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
     .select("*, products(name, category_id, unit, size_label)")
@@ -55,7 +47,9 @@ async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remo
 
   if (action === "add") {
     for (const ing of ingredients) {
-      // Calculate package quantity
+      // Skip staple items
+      if (ing.is_staple) continue;
+
       const qty = convertToPackages(
         ing.quantity,
         ing.unit || "stk",
@@ -63,7 +57,6 @@ async function syncShoppingListForRecipe(recipeId: string, action: "add" | "remo
         ing.products?.unit || null
       );
 
-      // Check if this product is already on the shopping list from this recipe
       const { data: existing } = await supabase
         .from("shopping_list_items")
         .select("*")
@@ -132,6 +125,33 @@ export default function MealPlanPage() {
     },
   });
 
+  // Check which recipes have ordered items on shopping list
+  const { data: orderedRecipeIds = [] } = useQuery({
+    queryKey: ["ordered_recipe_ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("shopping_list_items")
+        .select("recipe_id")
+        .eq("source_type", "recipe")
+        .eq("is_ordered", true);
+      if (!data) return [];
+      return [...new Set(data.map((d: any) => d.recipe_id).filter(Boolean))];
+    },
+  });
+
+  // Also check items currently on shopping list for each recipe
+  const { data: shoppingRecipeIds = [] } = useQuery({
+    queryKey: ["shopping_recipe_ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("shopping_list_items")
+        .select("recipe_id")
+        .eq("source_type", "recipe");
+      if (!data) return [];
+      return [...new Set(data.map((d: any) => d.recipe_id).filter(Boolean))];
+    },
+  });
+
   const filteredRecipes = useMemo(() => {
     let result = recipes;
     if (categoryFilter !== "Alle") result = result.filter((r: any) => r.category === categoryFilter);
@@ -145,7 +165,6 @@ export default function MealPlanPage() {
     mutationFn: async ({ dayOfWeek, recipeId }: { dayOfWeek: number; recipeId: string | null }) => {
       const existing = mealPlans.find((mp: any) => mp.day_of_week === dayOfWeek);
 
-      // Remove old recipe's shopping items if swapping/clearing
       if (existing?.recipe_id && existing.recipe_id !== recipeId) {
         await syncShoppingListForRecipe(existing.recipe_id, "remove");
       }
@@ -167,7 +186,6 @@ export default function MealPlanPage() {
         });
       }
 
-      // Add new recipe's ingredients to shopping list
       if (recipeId) {
         await syncShoppingListForRecipe(recipeId, "add");
       }
@@ -175,6 +193,7 @@ export default function MealPlanPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meal_plans"] });
       queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+      queryClient.invalidateQueries({ queryKey: ["shopping_recipe_ids"] });
     },
   });
 
@@ -215,7 +234,6 @@ export default function MealPlanPage() {
     setDragDay(null);
   };
 
-  // Touch-based drag for tablets
   const touchDragDay = useRef<number | null>(null);
   const dayRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -230,7 +248,6 @@ export default function MealPlanPage() {
     const touch = e.changedTouches[0];
     const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
     
-    // Find which day card we landed on
     for (let i = 0; i < 7; i++) {
       if (dayRefs.current[i]?.contains(targetEl as Node)) {
         if (i !== touchDragDay.current) {
@@ -273,6 +290,9 @@ export default function MealPlanPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
         {DAYS.map((day, i) => {
           const recipe = getMealForDay(i);
+          const plan = mealPlans.find((mp: any) => mp.day_of_week === i);
+          const isOrdered = recipe && (orderedRecipeIds as string[]).includes(plan?.recipe_id);
+          const isOnList = recipe && (shoppingRecipeIds as string[]).includes(plan?.recipe_id);
           return (
             <div
               key={day}
@@ -289,7 +309,11 @@ export default function MealPlanPage() {
               onTouchEnd={handleTouchEnd}
               onClick={() => !recipe && setSelectingDay(i)}
             >
-              <div className="bg-muted px-3 py-2 text-sm font-medium text-center">{day}</div>
+              <div className="bg-muted px-3 py-2 text-sm font-medium text-center flex items-center justify-center gap-1">
+                {day}
+                {isOrdered && <Flag className="h-3 w-3 text-green-600 fill-green-600" />}
+                {!isOrdered && isOnList && <Flag className="h-3 w-3 text-muted-foreground" />}
+              </div>
               {recipe ? (
                 <div className="p-2 space-y-2">
                   {recipe.image_url ? (
@@ -300,9 +324,14 @@ export default function MealPlanPage() {
                     </div>
                   )}
                   <div className="text-sm font-medium truncate">{recipe.title}</div>
-                  {recipe.prep_time && <div className="text-xs text-muted-foreground">{recipe.prep_time} min</div>}
+                  <div className="text-xs text-muted-foreground">
+                    {recipe.prep_time && <span>🍳 {recipe.prep_time} min</span>}
+                    {recipe.wait_time > 0 && <span className="ml-1">⏳ {recipe.wait_time} min</span>}
+                  </div>
                   <div className="flex gap-1">
-                    <Button variant="outline" size="sm" className="flex-1 min-h-[36px] text-xs" onClick={(e) => { e.stopPropagation(); setSelectingDay(i); }}>Byt</Button>
+                    <Button variant="ghost" size="icon" className="min-h-[36px] min-w-[36px]" onClick={(e) => { e.stopPropagation(); setSelectingDay(i); }} title="Byt opskrift">
+                      <ArrowLeftRight className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" className="min-h-[36px] min-w-[36px] text-destructive" onClick={(e) => { e.stopPropagation(); clearMeal(i); }}>
                       <X className="h-4 w-4" />
                     </Button>

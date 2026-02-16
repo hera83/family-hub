@@ -9,19 +9,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Settings, ShoppingCart, Trash2, Pencil, Search, ChevronDown, ChevronRight, Star, FileText } from "lucide-react";
+import { ImageUpload } from "@/components/ImageUpload";
+import { Plus, Settings, ShoppingCart, Trash2, Pencil, Search, ChevronDown, ChevronRight, Star, FileText, Minus } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { format } from "date-fns";
 import { da } from "date-fns/locale";
 
 const UNITS = ["stk", "kg", "g", "l", "dl", "ml", "pakke", "spsk", "tsk", "dåse"];
 
-// ProductForm moved to module level to prevent focus loss on re-render
-function ProductForm({ values, onChange, categories, isEdit }: { values: any; onChange: (v: any) => void; categories: any[]; isEdit?: boolean }) {
+function ProductForm({ values, onChange, categories }: { values: any; onChange: (v: any) => void; categories: any[] }) {
   return (
     <div className="space-y-3 max-h-[60vh] overflow-y-auto">
       <div><Label>Varenavn *</Label><Input value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} className="min-h-[44px]" /></div>
-      <div><Label>Billede URL</Label><Input value={values.image_url || ""} onChange={(e) => onChange({ ...values, image_url: e.target.value })} className="min-h-[44px]" /></div>
+      <div><Label>Billede</Label><ImageUpload value={values.image_url || null} onChange={(url) => onChange({ ...values, image_url: url || "" })} folder="products" /></div>
       <div><Label>Beskrivelse</Label><Input value={values.description || ""} onChange={(e) => onChange({ ...values, description: e.target.value })} className="min-h-[44px]" /></div>
       <div className="grid grid-cols-2 gap-2">
         <div><Label>Enhed</Label>
@@ -79,7 +79,6 @@ export default function ShoppingListPage() {
     calories_per_100g: "", fat_per_100g: "", carbs_per_100g: "", protein_per_100g: "", fiber_per_100g: "",
   });
 
-  // Queries
   const { data: items = [] } = useQuery({
     queryKey: ["shopping_list_items"],
     queryFn: async () => {
@@ -116,7 +115,6 @@ export default function ShoppingListPage() {
     },
   });
 
-  // Grouped items by product_id for expand logic
   const groupedByProduct = useMemo(() => {
     const map: Record<string, { product_id: string | null; product_name: string; size_label: string; unit: string; category: string; sortOrder: number; category_id: string | null; totalQty: number; price: number | null; lines: any[] }> = {};
     items.forEach((item: any) => {
@@ -153,7 +151,6 @@ export default function ShoppingListPage() {
     return Object.values(cats).sort((a, b) => a.sortOrder - b.sortOrder);
   }, [groupedByProduct]);
 
-  // Total price
   const totalPrice = useMemo(() => {
     let total = 0;
     Object.values(groupedByProduct).forEach((pg) => {
@@ -166,14 +163,12 @@ export default function ShoppingListPage() {
     return total;
   }, [groupedByProduct]);
 
-  // Filtered products for add popup
   const filteredProducts = useMemo(() => {
     let list = products;
     if (favoritesOnly) list = list.filter((p: any) => p.is_favorite);
     if (productSearch) {
       list = list.filter((p: any) => p.name.toLowerCase().includes(productSearch.toLowerCase()));
     } else if (!favoritesOnly) {
-      // Show top 6 most bought
       if (topProducts.length > 0) {
         const topSet = new Set(topProducts);
         const top = list.filter((p: any) => topSet.has(p.name));
@@ -184,7 +179,6 @@ export default function ShoppingListPage() {
     return list;
   }, [products, productSearch, favoritesOnly, topProducts]);
 
-  // Mutations
   const toggleCheck = useMutation({
     mutationFn: async ({ id, checked }: { id: string; checked: boolean }) => {
       await supabase.from("shopping_list_items").update({ is_checked: checked }).eq("id", id);
@@ -232,11 +226,10 @@ export default function ShoppingListPage() {
       }).select("*, item_categories(name)").single();
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products_catalog"] });
       setShowCreateProduct(false);
       resetNewProduct();
-      if (data) { setSelectedProduct(data); }
     },
   });
 
@@ -309,7 +302,6 @@ export default function ShoppingListPage() {
       const unchecked = items.filter((i: any) => !i.is_checked);
       if (unchecked.length === 0) return;
 
-      // Aggregate by product_id
       const aggMap: Record<string, { product_name: string; totalQty: number; unit: string; productUnit: string; category_name: string; price: number | null; size_label: string; sortOrder: number }> = {};
       unchecked.forEach((item: any) => {
         const key = item.product_id || `manual_${item.id}`;
@@ -334,7 +326,6 @@ export default function ShoppingListPage() {
       const aggregated = Object.values(aggMap);
       const orderTotal = aggregated.reduce((sum, a) => sum + (a.price ? a.totalQty * Number(a.price) : 0), 0);
 
-      // Generate PDF
       const doc = new jsPDF();
       doc.setFont("helvetica");
       doc.setFontSize(16);
@@ -344,14 +335,12 @@ export default function ShoppingListPage() {
       doc.text(`Samlet pris: ${orderTotal.toLocaleString("da-DK", { minimumFractionDigits: 2 })} kr`, 14, 34);
 
       let y = 44;
-      // Group aggregated items by category
       const catGroups: Record<string, typeof aggregated> = {};
       aggregated.forEach((a) => {
         if (!catGroups[a.category_name]) catGroups[a.category_name] = [];
         catGroups[a.category_name].push(a);
       });
 
-      // PDF header row
       const printHeader = (yPos: number) => {
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
@@ -393,7 +382,6 @@ export default function ShoppingListPage() {
       const rawPdf = doc.output("datauristring");
       const pdfBase64 = rawPdf.replace(/;filename=[^;]*/, "");
 
-      // Create order
       const { data: order } = await supabase.from("orders").insert({
         status: "completed",
         total_items: aggregated.reduce((s, a) => s + a.totalQty, 0),
@@ -403,7 +391,6 @@ export default function ShoppingListPage() {
 
       if (!order) return;
 
-      // Create aggregated order lines
       const lines = aggregated.map((a) => ({
         order_id: order.id,
         product_name: a.product_name,
@@ -415,7 +402,6 @@ export default function ShoppingListPage() {
       }));
       await supabase.from("order_lines").insert(lines);
 
-      // Mark items as ordered then delete
       const ids = unchecked.map((i: any) => i.id);
       await supabase.from("shopping_list_items").update({ is_ordered: true }).in("id", ids);
       await supabase.from("shopping_list_items").delete().in("id", ids);
@@ -465,8 +451,6 @@ export default function ShoppingListPage() {
     return products.filter((p: any) => p.name.toLowerCase().includes(productAdminSearch.toLowerCase()));
   }, [products, productAdminSearch]);
 
-  // ProductForm is now defined at module level above
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -487,7 +471,7 @@ export default function ShoppingListPage() {
         </div>
       </div>
 
-      {/* Grouped display with expand */}
+      {/* Grouped display - always folded (consistent look) */}
       {groupedByCategory.map((catGroup) => (
         <div key={catGroup.category} className="space-y-1">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide px-1">{catGroup.category}</h3>
@@ -501,12 +485,11 @@ export default function ShoppingListPage() {
               return (
                 <div key={key}>
                   <div className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${allChecked ? "bg-muted/50 opacity-60" : "bg-card"}`}>
-                    {hasMultiple && (
+                    {hasMultiple ? (
                       <button onClick={() => toggleExpand(key)} className="shrink-0">
                         {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </button>
-                    )}
-                    {!hasMultiple && (
+                    ) : (
                       <Checkbox
                         checked={pg.lines[0].is_checked}
                         onCheckedChange={(checked) => toggleCheck.mutate({ id: pg.lines[0].id, checked: !!checked })}
@@ -533,14 +516,9 @@ export default function ShoppingListPage() {
                       )}
                     </div>
                     {!hasMultiple && (
-                      <>
-                        <Badge variant={pg.lines[0].source_type === "recipe" ? "secondary" : "outline"} className="text-xs shrink-0">
-                          {pg.lines[0].source_type === "recipe" ? "Opskrift" : "Manuel"}
-                        </Badge>
-                        <Button size="icon" variant="ghost" onClick={() => deleteItem.mutate(pg.lines[0].id)} className="min-h-[44px] min-w-[44px] text-destructive shrink-0">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
+                      <Button size="icon" variant="ghost" onClick={() => deleteItem.mutate(pg.lines[0].id)} className="min-h-[44px] min-w-[44px] text-destructive shrink-0">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     )}
                   </div>
                   {hasMultiple && isExpanded && (
@@ -609,16 +587,10 @@ export default function ShoppingListPage() {
                       </div>
                     </div>
                     {product.is_favorite && <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 shrink-0" />}
-                    <Badge variant={product.is_manual ? "outline" : "secondary"} className="text-xs shrink-0">
-                      {product.is_manual ? "Manuel" : "API"}
-                    </Badge>
                   </div>
                 ))}
                 {filteredProducts.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Ingen varer fundet</p>}
               </div>
-              <Button variant="outline" onClick={() => { resetNewProduct(); setShowCreateProduct(true); }} className="w-full min-h-[44px] gap-2">
-                <Plus className="h-4 w-4" /> Opret ny vare
-              </Button>
             </>
           ) : (
             <div className="space-y-3">
@@ -631,7 +603,39 @@ export default function ShoppingListPage() {
                   <Button variant="ghost" size="sm" onClick={() => setSelectedProduct(null)} className="min-h-[36px]">Skift</Button>
                 </div>
               </div>
-              <div><Label>Antal</Label><Input type="number" value={addQuantity} onChange={(e) => setAddQuantity(Number(e.target.value))} min={1} step={1} className="min-h-[44px]" /></div>
+              <div>
+                <Label>Antal</Label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="min-h-[44px] min-w-[44px]"
+                    onClick={() => setAddQuantity(Math.max(1, addQuantity - 1))}
+                    disabled={addQuantity <= 1}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <Input
+                    type="number"
+                    value={addQuantity}
+                    onChange={(e) => {
+                      const v = Math.max(1, Math.floor(Number(e.target.value)));
+                      setAddQuantity(v);
+                    }}
+                    min={1}
+                    step={1}
+                    className="min-h-[44px] text-center flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="min-h-[44px] min-w-[44px]"
+                    onClick={() => setAddQuantity(addQuantity + 1)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
               <DialogFooter>
                 <Button onClick={() => addItemFromProduct.mutate({ product: selectedProduct, quantity: addQuantity })} className="min-h-[44px] w-full">
                   Tilføj {addQuantity} x {selectedProduct.name}{selectedProduct.size_label ? ` ${selectedProduct.size_label}` : ""}
@@ -727,7 +731,7 @@ export default function ShoppingListPage() {
       <Dialog open={!!editingProduct} onOpenChange={() => setEditingProduct(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Rediger vare</DialogTitle></DialogHeader>
-          {editingProduct && <ProductForm values={editingProduct} onChange={setEditingProduct} categories={categories} isEdit />}
+          {editingProduct && <ProductForm values={editingProduct} onChange={setEditingProduct} categories={categories} />}
           <DialogFooter>
             <Button onClick={() => editingProduct && updateProductMutation.mutate(editingProduct)} className="min-h-[44px]">Gem ændringer</Button>
           </DialogFooter>
