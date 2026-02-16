@@ -284,6 +284,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_staple: boolean
           name: string | null
           product_id: string | null
           quantity: number
@@ -293,6 +294,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_staple?: boolean
           name?: string | null
           product_id?: string | null
           quantity?: number
@@ -302,6 +304,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_staple?: boolean
           name?: string | null
           product_id?: string | null
           quantity?: number
@@ -338,6 +341,7 @@ export type Database = {
           prep_time: number | null
           title: string
           updated_at: string
+          wait_time: number | null
         }
         Insert: {
           category?: string | null
@@ -351,6 +355,7 @@ export type Database = {
           prep_time?: number | null
           title: string
           updated_at?: string
+          wait_time?: number | null
         }
         Update: {
           category?: string | null
@@ -364,6 +369,7 @@ export type Database = {
           prep_time?: number | null
           title?: string
           updated_at?: string
+          wait_time?: number | null
         }
         Relationships: []
       }

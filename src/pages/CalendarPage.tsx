@@ -40,7 +40,6 @@ const MUTED_COLORS = [
 ];
 
 const DAY_LABELS = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"];
-// ISO weekday: 1=Mon, 7=Sun
 const DAY_OPTIONS = [
   { value: 1, label: "Mandag" },
   { value: 2, label: "Tirsdag" },
@@ -51,12 +50,10 @@ const DAY_OPTIONS = [
   { value: 7, label: "Søndag" },
 ];
 
-/** Convert JS Date getDay() (0=Sun) to ISO (1=Mon, 7=Sun) */
 function toISODay(jsDay: number) {
   return jsDay === 0 ? 7 : jsDay;
 }
 
-/** Check if a recurring event falls on a given day */
 function recursFallsOnDay(event: any, day: Date): boolean {
   const eventStart = parseISO(event.event_date);
   if (isBefore(day, eventStart)) return false;
@@ -112,7 +109,6 @@ export default function CalendarPage() {
     return { start, end, days: eachDayOfInterval({ start: monthStart, end: monthEnd }) };
   }, [currentDate, viewMode]);
 
-  // Fetch non-recurring events in range
   const { data: normalEvents = [] } = useQuery({
     queryKey: ["calendar_events", dateRange.start.toISOString(), dateRange.end.toISOString()],
     queryFn: async () => {
@@ -129,7 +125,6 @@ export default function CalendarPage() {
     },
   });
 
-  // Fetch all recurring events (their start date <= end of visible range)
   const { data: recurringEvents = [] } = useQuery({
     queryKey: ["recurring_events", dateRange.days[dateRange.days.length - 1].toISOString()],
     queryFn: async () => {
@@ -244,7 +239,6 @@ export default function CalendarPage() {
     setShowEventDialog(true);
   };
 
-  /** Get all events (normal + virtual recurring instances) for a given day */
   const getEventsForDay = (day: Date) => {
     const normal = normalEvents.filter((e: any) => isSameDay(parseISO(e.event_date), day));
     const recurring = recurringEvents.filter((e: any) => recursFallsOnDay(e, day)).map((e: any) => ({
@@ -257,6 +251,11 @@ export default function CalendarPage() {
   const getMemberColor = (memberId: string) => {
     const member = members.find((m: any) => m.id === memberId);
     return member?.color || "hsl(210, 15%, 70%)";
+  };
+
+  const getMemberName = (memberId: string) => {
+    const member = members.find((m: any) => m.id === memberId);
+    return member?.name || "Ukendt";
   };
 
   const recurrenceLabel = (event: any) => {
@@ -278,6 +277,32 @@ export default function CalendarPage() {
         : [...prev.recurrence_days, day],
     }));
   };
+
+  // Build week activity table data: group all events by member for the week
+  const weekActivityData = useMemo(() => {
+    if (viewMode !== "week") return [];
+    const memberMap: Record<string, { memberId: string; name: string; color: string; activities: { day: Date; events: any[] }[] }> = {};
+
+    dateRange.days.forEach((day) => {
+      const dayEvents = getEventsForDay(day);
+      dayEvents.forEach((e: any) => {
+        const mid = e.member_id || "none";
+        if (!memberMap[mid]) {
+          memberMap[mid] = {
+            memberId: mid,
+            name: getMemberName(mid),
+            color: getMemberColor(mid),
+            activities: dateRange.days.map(d => ({ day: d, events: [] })),
+          };
+        }
+        const dayIdx = dateRange.days.findIndex(d => isSameDay(d, day));
+        if (dayIdx >= 0) memberMap[mid].activities[dayIdx].events.push(e);
+      });
+    });
+
+    // Only include members that have at least one event
+    return Object.values(memberMap).filter(m => m.activities.some(a => a.events.length > 0));
+  }, [viewMode, dateRange.days, normalEvents, recurringEvents, members]);
 
   return (
     <div className="space-y-4">
@@ -385,6 +410,52 @@ export default function CalendarPage() {
           );
         })}
       </div>
+
+      {/* Week activity table - only in week view */}
+      {viewMode === "week" && weekActivityData.length > 0 && (
+        <div className="border rounded-lg overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted">
+                <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap">Medlem</th>
+                {dateRange.days.map((day) => (
+                  <th key={day.toISOString()} className={`text-center p-2 font-medium whitespace-nowrap ${isToday(day) ? "text-primary" : "text-muted-foreground"}`}>
+                    {format(day, "EEE d.", { locale: da })}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {weekActivityData.map((member) => (
+                <tr key={member.memberId} className="border-t">
+                  <td className="p-2 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: member.color }} />
+                      <span className="font-medium text-sm">{member.name}</span>
+                    </div>
+                  </td>
+                  {member.activities.map((act, dayIdx) => (
+                    <td key={dayIdx} className="p-1 align-top">
+                      <div className="space-y-0.5">
+                        {act.events.map((e: any, i: number) => (
+                          <div
+                            key={e.id + i}
+                            className="text-xs px-1.5 py-0.5 rounded cursor-pointer truncate hover:opacity-80"
+                            style={{ backgroundColor: member.color, color: "white" }}
+                            onClick={() => openEditEvent(e)}
+                          >
+                            {e.start_time ? `${e.start_time.slice(0, 5)} ` : ""}{e.title}
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Member admin dialog */}
       <Dialog open={showMemberAdmin} onOpenChange={setShowMemberAdmin}>

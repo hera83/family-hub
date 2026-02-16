@@ -6,14 +6,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Search, ChevronLeft, ChevronRight, UtensilsCrossed, Heart, Copy, Trash2, X } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ImageUpload } from "@/components/ImageUpload";
+import { Plus, Pencil, Search, ChevronLeft, ChevronRight, UtensilsCrossed, Heart, Copy, Trash2, X, Settings } from "lucide-react";
 
-const CATEGORIES = ["Alle", "Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 const PAGE_SIZE = 10;
 const UNITS = ["stk", "kg", "g", "l", "dl", "ml", "pakke", "spsk", "tsk", "dåse"];
+const DEFAULT_CATEGORIES = ["Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 
 const emptyRecipe = {
-  title: "", image_url: "", description: "", category: "Hovedret", prep_time: 30,
+  title: "", image_url: "", description: "", category: "Hovedret", prep_time: 30, wait_time: 0,
   instructions: "", is_manual: true, is_favorite: false,
 };
 
@@ -23,6 +26,7 @@ type IngredientRow = {
   product_name: string;
   quantity: number;
   unit: string;
+  is_staple: boolean;
   _deleted?: boolean;
 };
 
@@ -34,13 +38,17 @@ export default function RecipesPage() {
   const [showEditor, setShowEditor] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [formData, setFormData] = useState(emptyRecipe);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+  const [editingCategory, setEditingCategory] = useState<{ idx: number; value: string } | null>(null);
 
   // Ingredients state
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [showProductSearch, setShowProductSearch] = useState(false);
-  const [addingIngredientIndex, setAddingIngredientIndex] = useState<number | null>(null);
 
+  // Recipe categories from DB - store as simple strings in recipes.category
+  // For admin, we manage a local list that maps to the distinct categories used
   const { data: recipesData } = useQuery({
     queryKey: ["recipes_paginated", searchQuery, categoryFilter, page],
     queryFn: async () => {
@@ -52,7 +60,21 @@ export default function RecipesPage() {
     },
   });
 
-  // Products for ingredient search
+  // Get distinct categories from recipes
+  const { data: allRecipes = [] } = useQuery({
+    queryKey: ["all_recipes_categories"],
+    queryFn: async () => {
+      const { data } = await supabase.from("recipes").select("category");
+      return data || [];
+    },
+  });
+
+  const categories = useMemo(() => {
+    const cats = new Set<string>(DEFAULT_CATEGORIES);
+    allRecipes.forEach((r: any) => { if (r.category) cats.add(r.category); });
+    return ["Alle", ...Array.from(cats)];
+  }, [allRecipes]);
+
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
@@ -66,7 +88,6 @@ export default function RecipesPage() {
     return products.filter((p: any) => p.name.toLowerCase().includes(ingredientSearch.toLowerCase()));
   }, [products, ingredientSearch]);
 
-  // Load ingredients when editing
   useEffect(() => {
     if (showEditor && editingRecipe?.id) {
       supabase
@@ -81,6 +102,7 @@ export default function RecipesPage() {
               product_name: ing.products?.name || ing.name || "",
               quantity: ing.quantity,
               unit: ing.unit || "stk",
+              is_staple: ing.is_staple || false,
             }))
           );
         });
@@ -110,7 +132,6 @@ export default function RecipesPage() {
         recipeId = inserted!.id;
       }
 
-      // Save ingredients
       const existing = ingredients.filter((i) => i.id && !i._deleted);
       const toDelete = ingredients.filter((i) => i.id && i._deleted);
       const toInsert = ingredients.filter((i) => !i.id && !i._deleted);
@@ -125,6 +146,7 @@ export default function RecipesPage() {
           name: ing.product_name,
           quantity: ing.quantity,
           unit: ing.unit,
+          is_staple: ing.is_staple,
         }).eq("id", ing.id!);
       }
 
@@ -136,6 +158,7 @@ export default function RecipesPage() {
             name: ing.product_name,
             quantity: ing.quantity,
             unit: ing.unit,
+            is_staple: ing.is_staple,
           }))
         );
       }
@@ -143,6 +166,7 @@ export default function RecipesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
       setShowEditor(false);
     },
   });
@@ -155,6 +179,7 @@ export default function RecipesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
     },
   });
 
@@ -180,13 +205,13 @@ export default function RecipesPage() {
     setFormData({
       title: recipe.title, image_url: recipe.image_url || "", description: recipe.description || "",
       category: recipe.category || "Hovedret", prep_time: recipe.prep_time || 30,
+      wait_time: recipe.wait_time || 0,
       instructions: recipe.instructions || "", is_manual: recipe.is_manual, is_favorite: recipe.is_favorite,
     });
     setShowEditor(true);
   };
 
   const cloneRecipe = async (recipe: any) => {
-    // Load ingredients from source recipe
     const { data: srcIngredients } = await supabase
       .from("recipe_ingredients")
       .select("*, products(name)")
@@ -196,6 +221,7 @@ export default function RecipesPage() {
     setFormData({
       title: `${recipe.title} (kopi)`, image_url: recipe.image_url || "", description: recipe.description || "",
       category: recipe.category || "Hovedret", prep_time: recipe.prep_time || 30,
+      wait_time: recipe.wait_time || 0,
       instructions: recipe.instructions || "", is_manual: true, is_favorite: false,
     });
     setIngredients(
@@ -204,6 +230,7 @@ export default function RecipesPage() {
         product_name: ing.products?.name || ing.name || "",
         quantity: ing.quantity,
         unit: ing.unit || "stk",
+        is_staple: ing.is_staple || false,
       }))
     );
     setShowEditor(true);
@@ -214,7 +241,7 @@ export default function RecipesPage() {
   const addIngredientFromProduct = (product: any) => {
     setIngredients((prev) => [
       ...prev,
-      { product_id: product.id, product_name: product.name, quantity: 1, unit: product.unit || "stk" },
+      { product_id: product.id, product_name: product.name, quantity: 1, unit: product.unit || "stk", is_staple: false },
     ]);
     setShowProductSearch(false);
     setIngredientSearch("");
@@ -236,9 +263,14 @@ export default function RecipesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Opskrifter</h2>
-        <Button onClick={openNew} className="min-h-[44px] gap-2">
-          <Plus className="h-4 w-4" /> Ny opskrift
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => setShowAdmin(true)} className="min-h-[44px] min-w-[44px]">
+            <Settings className="h-5 w-5" />
+          </Button>
+          <Button onClick={openNew} className="min-h-[44px] gap-2">
+            <Plus className="h-4 w-4" /> Ny opskrift
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -254,7 +286,7 @@ export default function RecipesPage() {
 
       {/* Category filters */}
       <div className="flex flex-wrap gap-2">
-        {CATEGORIES.map((cat) => (
+        {categories.map((cat) => (
           <Button key={cat} variant={categoryFilter === cat ? "default" : "outline"} size="sm" onClick={() => { setCategoryFilter(cat); setPage(1); }} className="min-h-[36px]">
             {cat}
           </Button>
@@ -283,6 +315,7 @@ export default function RecipesPage() {
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span>{recipe.category}</span>
                 {recipe.prep_time && <span>· {recipe.prep_time} min</span>}
+                {recipe.wait_time > 0 && <span>· ventetid {recipe.wait_time} min</span>}
               </div>
               <div className="flex items-center gap-1 pt-1">
                 <Button size="icon" variant="ghost" onClick={() => toggleFavorite.mutate({ id: recipe.id, is_favorite: !recipe.is_favorite })} className="min-h-[36px] min-w-[36px]">
@@ -322,23 +355,91 @@ export default function RecipesPage() {
         </div>
       )}
 
+      {/* Category admin dialog */}
+      <Dialog open={showAdmin} onOpenChange={setShowAdmin}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Kategorier</DialogTitle></DialogHeader>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {categories.filter(c => c !== "Alle").map((cat, idx) => (
+              <div key={cat} className="flex items-center gap-2">
+                {editingCategory?.idx === idx ? (
+                  <>
+                    <Input
+                      value={editingCategory.value}
+                      onChange={(e) => setEditingCategory({ ...editingCategory, value: e.target.value })}
+                      className="flex-1 min-h-[44px]"
+                    />
+                    <Button size="sm" onClick={async () => {
+                      // Update all recipes with old category to new
+                      if (editingCategory.value && editingCategory.value !== cat) {
+                        await supabase.from("recipes").update({ category: editingCategory.value }).eq("category", cat);
+                        queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
+                        queryClient.invalidateQueries({ queryKey: ["recipes"] });
+                        queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
+                      }
+                      setEditingCategory(null);
+                    }} className="min-h-[44px]">Gem</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingCategory(null)} className="min-h-[44px]">Annuller</Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm">{cat}</span>
+                    <Button size="icon" variant="ghost" onClick={() => setEditingCategory({ idx, value: cat })} className="min-h-[44px] min-w-[44px]"><Pencil className="h-4 w-4" /></Button>
+                  </>
+                )}
+              </div>
+            ))}
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <Input
+                placeholder="Ny kategori..."
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="flex-1 min-h-[44px]"
+              />
+              <Button
+                onClick={() => {
+                  if (newCategory.trim()) {
+                    // Just adding to the list - it'll appear when a recipe uses it
+                    // We need to create at least one recipe or just add it
+                    queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
+                    setNewCategory("");
+                  }
+                }}
+                disabled={!newCategory.trim()}
+                className="min-h-[44px]"
+              >
+                Tilføj
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Recipe editor dialog */}
       <Dialog open={showEditor} onOpenChange={setShowEditor}>
         <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingRecipe ? "Rediger opskrift" : "Ny opskrift"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Titel</Label><Input value={formData.title} onChange={(e) => updateField("title", e.target.value)} className="min-h-[44px]" /></div>
-            <div><Label>Billede URL</Label><Input value={formData.image_url} onChange={(e) => updateField("image_url", e.target.value)} placeholder="https://..." className="min-h-[44px]" /></div>
-            <div><Label>Beskrivelse</Label><textarea value={formData.description} onChange={(e) => updateField("description", e.target.value)} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px]" /></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><Label>Kategori</Label>
-                <select value={formData.category} onChange={(e) => updateField("category", e.target.value)} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                  {CATEGORIES.filter((c) => c !== "Alle").map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div><Label>Tilberedningstid (min)</Label><Input type="number" value={formData.prep_time} onChange={(e) => updateField("prep_time", Number(e.target.value))} className="min-h-[44px]" /></div>
+            <div><Label>Billede</Label><ImageUpload value={formData.image_url || null} onChange={(url) => updateField("image_url", url || "")} folder="recipes" /></div>
+            <div>
+              <Label>Kategori</Label>
+              <select value={formData.category} onChange={(e) => updateField("category", e.target.value)} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                {categories.filter((c) => c !== "Alle").map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
-            <div><Label>Fremgangsmåde</Label><textarea value={formData.instructions} onChange={(e) => updateField("instructions", e.target.value)} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[120px]" /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label>Køkkentid (min)</Label><Input type="number" value={formData.prep_time} onChange={(e) => updateField("prep_time", Number(e.target.value))} className="min-h-[44px]" /></div>
+              <div><Label>Ventetid (min)</Label><Input type="number" value={formData.wait_time} onChange={(e) => updateField("wait_time", Number(e.target.value))} className="min-h-[44px]" /></div>
+            </div>
+            <div>
+              <Label>Fremgangsmåde</Label>
+              <textarea
+                value={formData.instructions}
+                onChange={(e) => updateField("instructions", e.target.value)}
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px]"
+              />
+            </div>
 
             {/* Ingredients section */}
             <div className="space-y-2 pt-2 border-t">
@@ -357,7 +458,18 @@ export default function RecipesPage() {
                 const realIndex = ingredients.findIndex((i) => i === ing);
                 return (
                   <div key={idx} className="flex items-center gap-2">
-                    <span className="flex-1 text-sm truncate">{ing.product_name}</span>
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                      <Checkbox
+                        checked={ing.is_staple}
+                        onCheckedChange={(checked) => updateIngredient(realIndex, "is_staple", !!checked)}
+                        className="h-4 w-4"
+                        title="Basisvare (tilføjes ikke til indkøbslisten)"
+                      />
+                      <span className={`text-sm truncate ${ing.is_staple ? "text-muted-foreground italic" : ""}`}>
+                        {ing.product_name}
+                        {ing.is_staple && <span className="text-xs ml-1">(basis)</span>}
+                      </span>
+                    </div>
                     <Input
                       type="number"
                       value={ing.quantity}
@@ -380,6 +492,11 @@ export default function RecipesPage() {
                 );
               })}
             </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <Switch checked={formData.is_favorite} onCheckedChange={(v) => updateField("is_favorite", v)} />
+              <Label>Favorit</Label>
+            </div>
           </div>
           <DialogFooter className="gap-2">
             {editingRecipe && (
@@ -387,7 +504,12 @@ export default function RecipesPage() {
             )}
             <Button
               onClick={() => {
-                const payload = { ...formData, prep_time: formData.prep_time || null, image_url: formData.image_url || null };
+                const payload = {
+                  ...formData,
+                  prep_time: formData.prep_time || null,
+                  wait_time: formData.wait_time || null,
+                  image_url: formData.image_url || null,
+                };
                 if (editingRecipe) (payload as any).id = editingRecipe.id;
                 saveRecipe.mutate(payload);
               }}
@@ -425,9 +547,6 @@ export default function RecipesPage() {
                   <div className="text-sm font-medium truncate">{product.name}</div>
                   <div className="text-xs text-muted-foreground">{product.item_categories?.name || "Ingen kategori"} · {product.unit || "stk"}</div>
                 </div>
-                <Badge variant={product.is_manual ? "outline" : "secondary"} className="text-xs shrink-0">
-                  {product.is_manual ? "Manuel" : "API"}
-                </Badge>
               </div>
             ))}
             {filteredProducts.length === 0 && (
