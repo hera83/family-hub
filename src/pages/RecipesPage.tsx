@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,7 @@ export default function RecipesPage() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [editingCategory, setEditingCategory] = useState<{ idx: number; value: string } | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
 
   // Ingredients state
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
@@ -405,6 +407,7 @@ export default function RecipesPage() {
                   <>
                     <span className="flex-1 text-sm">{cat}</span>
                     <Button size="icon" variant="ghost" onClick={() => setEditingCategory({ idx, value: cat })} className="min-h-[44px] min-w-[44px]"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => setDeletingCategory(cat)} className="min-h-[44px] min-w-[44px] text-destructive"><Trash2 className="h-4 w-4" /></Button>
                   </>
                 )}
               </div>
@@ -435,7 +438,29 @@ export default function RecipesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Recipe editor dialog */}
+      {/* Delete category confirmation */}
+      <AlertDialog open={!!deletingCategory} onOpenChange={(open) => { if (!open) setDeletingCategory(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Slet kategori</AlertDialogTitle>
+            <AlertDialogDescription>
+              Er du sikker på, at du vil slette kategorien "{deletingCategory}"? Opskrifter med denne kategori vil blive sat til "Ukategoriseret".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-[44px]">Annuller</AlertDialogCancel>
+            <AlertDialogAction className="min-h-[44px]" onClick={async () => {
+              if (!deletingCategory) return;
+              await supabase.from("recipes").update({ category: null }).eq("category", deletingCategory);
+              queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
+              queryClient.invalidateQueries({ queryKey: ["recipes"] });
+              queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
+              setDeletingCategory(null);
+            }}>Slet</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={showEditor} onOpenChange={setShowEditor}>
         <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingRecipe ? "Rediger opskrift" : "Ny opskrift"}</DialogTitle></DialogHeader>
