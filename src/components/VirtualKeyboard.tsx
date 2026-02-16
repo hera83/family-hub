@@ -82,8 +82,13 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
         freshFocusRef.current = isNumericInput(el);
 
         setTimeout(() => {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 100);
+          const kbHeight = keyboardRef.current?.getBoundingClientRect().height ?? 260;
+          const rect = el.getBoundingClientRect();
+          const visibleBottom = window.innerHeight - kbHeight;
+          if (rect.bottom > visibleBottom) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 250);
       }
     };
 
@@ -120,18 +125,28 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? el.value.length;
 
+    const safeSetSelection = (pos: number) => {
+      try { el.setSelectionRange(pos, pos); } catch {}
+    };
+
     if (key === "BACKSPACE") {
       freshFocusRef.current = false;
-      if (start === end && start > 0) {
+      const isNumeric = isNumericInput(el);
+      if (isNumeric) {
+        // For number inputs, just remove the last character
+        const newVal = el.value.slice(0, -1);
+        nativeInputValueSetter?.call(el, newVal);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      } else if (start === end && start > 0) {
         const newVal = el.value.slice(0, start - 1) + el.value.slice(end);
         nativeInputValueSetter?.call(el, newVal);
         el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.setSelectionRange(start - 1, start - 1);
+        safeSetSelection(start - 1);
       } else if (start !== end) {
         const newVal = el.value.slice(0, start) + el.value.slice(end);
         nativeInputValueSetter?.call(el, newVal);
         el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.setSelectionRange(start, start);
+        safeSetSelection(start);
       }
       requestAnimationFrame(() => el.focus());
     } else if (key === "ENTER") {
@@ -147,7 +162,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       const newVal = el.value.slice(0, start) + " " + el.value.slice(end);
       nativeInputValueSetter?.call(el, newVal);
       el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.setSelectionRange(start + 1, start + 1);
+      safeSetSelection(start + 1);
       requestAnimationFrame(() => el.focus());
     } else if (key === "SHIFT") {
       setShifted((s) => !s);
@@ -169,7 +184,7 @@ export function VirtualKeyboard({ enabled }: { enabled: boolean }) {
       const newVal = el.value.slice(0, start) + key + el.value.slice(end);
       nativeInputValueSetter?.call(el, newVal);
       el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.setSelectionRange(start + 1, start + 1);
+      safeSetSelection(start + 1);
       if (shifted) setShifted(false);
       requestAnimationFrame(() => el.focus());
     }
