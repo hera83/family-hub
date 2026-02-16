@@ -40,9 +40,15 @@ function ProductForm({ values, onChange, categories }: { values: any; onChange: 
           </select>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <Switch checked={values.is_favorite || false} onCheckedChange={(v) => onChange({ ...values, is_favorite: v })} />
-        <Label>Favoritvare</Label>
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Switch checked={values.is_favorite || false} onCheckedChange={(v) => onChange({ ...values, is_favorite: v })} />
+          <Label>Favoritvare</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch checked={values.is_staple || false} onCheckedChange={(v) => onChange({ ...values, is_staple: v })} />
+          <Label>Basisvare</Label>
+        </div>
       </div>
       <div className="border-t pt-3">
         <Label className="text-muted-foreground">Næringsindhold pr. 100g (valgfrit)</Label>
@@ -218,6 +224,7 @@ export default function ShoppingListPage() {
         price: product.price ? parseFloat(product.price.toString().replace(",", ".")) : null,
         image_url: product.image_url || null,
         is_favorite: product.is_favorite || false,
+        is_staple: product.is_staple || false,
         calories_per_100g: product.calories_per_100g ? parseFloat(product.calories_per_100g) : null,
         fat_per_100g: product.fat_per_100g ? parseFloat(product.fat_per_100g) : null,
         carbs_per_100g: product.carbs_per_100g ? parseFloat(product.carbs_per_100g) : null,
@@ -478,24 +485,18 @@ export default function ShoppingListPage() {
           <div className="space-y-1">
             {catGroup.productGroups.map((pg: any) => {
               const key = pg.product_id || pg.lines[0]?.id;
-              const hasMultiple = pg.lines.length > 1;
               const isExpanded = expandedProducts.has(key);
               const allChecked = pg.lines.every((l: any) => l.is_checked);
 
               return (
                 <div key={key}>
-                  <div className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${allChecked ? "bg-muted/50 opacity-60" : "bg-card"}`}>
-                    {hasMultiple ? (
-                      <button onClick={() => toggleExpand(key)} className="shrink-0">
-                        {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                      </button>
-                    ) : (
-                      <Checkbox
-                        checked={pg.lines[0].is_checked}
-                        onCheckedChange={(checked) => toggleCheck.mutate({ id: pg.lines[0].id, checked: !!checked })}
-                        className="h-5 w-5"
-                      />
-                    )}
+                  <div
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${allChecked ? "bg-muted/50 opacity-60" : "bg-card"}`}
+                    onClick={() => toggleExpand(key)}
+                  >
+                    <button className="shrink-0">
+                      {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </button>
                     <div className="flex-1 min-w-0">
                       <span className={`text-sm ${allChecked ? "line-through" : ""}`}>
                         {pg.totalQty} x {pg.product_name}{pg.size_label ? ` ${pg.size_label}` : ""}{pg.unit && pg.size_label ? ` ${pg.unit}` : ""}
@@ -515,13 +516,8 @@ export default function ShoppingListPage() {
                         </span>
                       )}
                     </div>
-                    {!hasMultiple && (
-                      <Button size="icon" variant="ghost" onClick={() => deleteItem.mutate(pg.lines[0].id)} className="min-h-[44px] min-w-[44px] text-destructive shrink-0">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
                   </div>
-                  {hasMultiple && isExpanded && (
+                  {isExpanded && (
                     <div className="ml-8 space-y-1 mt-1">
                       {pg.lines.map((line: any) => (
                         <div key={line.id} className={`flex items-center gap-3 p-2 rounded border transition-colors ${line.is_checked ? "bg-muted/50 opacity-60" : "bg-card"}`}>
@@ -539,7 +535,7 @@ export default function ShoppingListPage() {
                           <Badge variant={line.source_type === "recipe" ? "secondary" : "outline"} className="text-xs">
                             {line.source_type === "recipe" ? (line.recipes?.title || "Opskrift") : "Manuel"}
                           </Badge>
-                          <Button size="icon" variant="ghost" onClick={() => deleteItem.mutate(line.id)} className="min-h-[36px] min-w-[36px] text-destructive">
+                          <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); deleteItem.mutate(line.id); }} className="min-h-[36px] min-w-[36px] text-destructive">
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>

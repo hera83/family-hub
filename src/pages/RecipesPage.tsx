@@ -243,7 +243,6 @@ export default function RecipesPage() {
       ...prev,
       { product_id: product.id, product_name: product.name, quantity: 1, unit: product.unit || "stk", is_staple: false },
     ]);
-    setShowProductSearch(false);
     setIngredientSearch("");
   };
 
