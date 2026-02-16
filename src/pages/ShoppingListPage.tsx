@@ -431,6 +431,7 @@ export default function ShoppingListPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+      queryClient.invalidateQueries({ queryKey: ["meal_plan_order_status"] });
     },
   });
 

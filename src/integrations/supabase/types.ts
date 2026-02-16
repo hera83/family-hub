@@ -383,6 +383,7 @@ export type Database = {
           id: string
           is_checked: boolean
           is_ordered: boolean
+          meal_plan_id: string | null
           order_id: string | null
           ordered_at: string | null
           product_id: string | null
@@ -400,6 +401,7 @@ export type Database = {
           id?: string
           is_checked?: boolean
           is_ordered?: boolean
+          meal_plan_id?: string | null
           order_id?: string | null
           ordered_at?: string | null
           product_id?: string | null
@@ -417,6 +419,7 @@ export type Database = {
           id?: string
           is_checked?: boolean
           is_ordered?: boolean
+          meal_plan_id?: string | null
           order_id?: string | null
           ordered_at?: string | null
           product_id?: string | null
@@ -434,6 +437,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "item_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopping_list_items_meal_plan_id_fkey"
+            columns: ["meal_plan_id"]
+            isOneToOne: false
+            referencedRelation: "meal_plans"
             referencedColumns: ["id"]
           },
           {
