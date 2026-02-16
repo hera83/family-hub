@@ -228,6 +228,7 @@ export type Database = {
           image_url: string | null
           is_favorite: boolean
           is_manual: boolean
+          is_staple: boolean
           name: string
           price: number | null
           protein_per_100g: number | null
@@ -246,6 +247,7 @@ export type Database = {
           image_url?: string | null
           is_favorite?: boolean
           is_manual?: boolean
+          is_staple?: boolean
           name: string
           price?: number | null
           protein_per_100g?: number | null
@@ -264,6 +266,7 @@ export type Database = {
           image_url?: string | null
           is_favorite?: boolean
           is_manual?: boolean
+          is_staple?: boolean
           name?: string
           price?: number | null
           protein_per_100g?: number | null
