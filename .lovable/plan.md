@@ -1,47 +1,45 @@
 
-# Ny tilgang: Deaktiver overlay pointer-events via CSS
 
-## Problemet
-Radix UI's overlay-element (den morklagte baggrund bag popups) er et `fixed inset-0` element der daekker hele skaermen og fanger alle pointer-events -- **ogsaa dem der er rettet mod tastaturet**. Uanset z-index og DOM-raekkefoelge, saa skaber Radix-portalen sin egen stacking context, som blokerer klik og hover paa tastaturet.
+## Problem: Number inputs ignore text selection
 
-De tidligere forsog har proevet at loese det med:
-- DOM-order manipulation (MutationObserver) -- virker ikke pga. stacking contexts
-- stopImmediatePropagation -- draeber Reacts event-system
-- Event re-dispatch -- skaber uendelige loops
+### Root Cause
 
-## Den nye tilgang
+Browser `<input type="number">` elements do **not** expose `selectionStart` or `selectionEnd` -- accessing them returns `null` (this is a browser security/spec restriction). 
 
-I stedet for at kaempe mod portalerne, **slaar vi pointer-events fra paa overlay-elementerne** naar tastaturet er synligt. Tastaturet faar saa automatisk alle events.
+The `Input` component correctly calls `e.target.select()` on focus, which visually highlights the "0", but when the VirtualKeyboard reads `el.selectionStart` it gets `null` and falls back to `el.value.length`. The keyboard then appends the new digit instead of replacing the selected text.
 
-### Trin 1: Body-klasse som signal
-Naar tastaturet er synligt, tilfoej klassen `vkb-active` paa `document.body`. Naar det skjules, fjern klassen.
+### Solution
 
-### Trin 2: Data-attribut paa overlays
-Tilfoej `data-keyboard-overlay` attributten paa `DialogOverlay` og `SheetOverlay` komponenterne, saa de kan targeteres praecist med CSS.
+Since we cannot read selection state from number inputs, we need a different approach:
 
-### Trin 3: Global CSS-regel
-Tilfoej i `src/index.css`:
-```css
-body.vkb-active [data-keyboard-overlay] {
-  pointer-events: none;
+**In `src/components/VirtualKeyboard.tsx`**, detect when the active element is a number input and the value hasn't been modified since focus (i.e., the first keystroke). On the first character typed into a number input, replace the entire value instead of appending.
+
+Specifically:
+
+1. Add a `freshFocus` ref (`useRef(false)`) that gets set to `true` whenever `onFocusIn` fires on a number input
+2. In `handleKey`, when `freshFocus` is `true` and the key is a printable character (digit, dot, minus), replace the entire value with just that key
+3. Set `freshFocus` to `false` after the first keystroke
+
+### Changes
+
+**File: `src/components/VirtualKeyboard.tsx`**
+
+- Add `const freshFocusRef = useRef(false);`
+- In the `onFocusIn` handler, set `freshFocusRef.current = true` when `isNumericInput(el)` is true
+- In `handleKey`, before the normal character insertion block, add a check:
+
+```text
+if (freshFocusRef.current && isNumericInput(el)) {
+  // Replace entire value on first keystroke
+  nativeInputValueSetter?.call(el, key);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.setSelectionRange(key.length, key.length);
+  freshFocusRef.current = false;
+  return;
 }
 ```
 
-Dette goer at den moerke baggrund bag popups ikke laengere fanger museklik/hover naar tastaturet er fremme -- men selve popup-indholdet (dialog-boksen) beholder sine pointer-events.
+- Reset `freshFocusRef.current = false` on BACKSPACE too (so backspace doesn't clear everything)
 
-### Trin 4: Fjern den custom portal-container
-Gaa tilbage til at bruge `createPortal(content, document.body)` direkte. Fjern MutationObserver-logikken og den dedikerede container. Med overlay pointer-events deaktiveret er det ikke noedvendigt at manipulere DOM-raekkefoelge laengere.
+This approach sidesteps the browser limitation entirely -- no need to read `selectionStart` on number inputs.
 
-## Filer der aendres
-
-| Fil | AEndring |
-|-----|---------|
-| `src/components/VirtualKeyboard.tsx` | Tilfoej/fjern `vkb-active` klasse paa body. Fjern portal-container logik, brug `document.body` direkte. |
-| `src/components/ui/dialog.tsx` | Tilfoej `data-keyboard-overlay` paa `DialogOverlay`. |
-| `src/components/ui/sheet.tsx` | Tilfoej `data-keyboard-overlay` paa `SheetOverlay`. |
-| `src/index.css` | Tilfoej CSS-regel for `body.vkb-active [data-keyboard-overlay]`. |
-
-## Hvorfor dette virker
-- Overlay-elementet er det eneste der blokerer -- ved at saette `pointer-events: none` paa det, naar tastaturet er aktivt, kan events naa tastaturet uanset stacking context.
-- Ingen manipulation af event-propagation, saa React og Radix fungerer normalt.
-- Popup-indholdet (selve dialogen) beholder sine pointer-events, saa man stadig kan interagere med inputs inde i popuppen.
