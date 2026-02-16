@@ -418,140 +418,149 @@ export default function RecipesPage() {
       <Dialog open={showEditor} onOpenChange={setShowEditor}>
         <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingRecipe ? "Rediger opskrift" : "Ny opskrift"}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Titel</Label><Input value={formData.title} onChange={(e) => updateField("title", e.target.value)} className="min-h-[44px]" /></div>
-            <div><Label>Billede</Label><ImageUpload value={formData.image_url || null} onChange={(url) => updateField("image_url", url || "")} folder="recipes" /></div>
-            <div>
-              <Label>Kategori</Label>
-              <select value={formData.category} onChange={(e) => updateField("category", e.target.value)} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                {categories.filter((c) => c !== "Alle").map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><Label>Køkkentid (min)</Label><Input type="number" value={formData.prep_time} onChange={(e) => updateField("prep_time", Number(e.target.value))} className="min-h-[44px]" /></div>
-              <div><Label>Ventetid (min)</Label><Input type="number" value={formData.wait_time} onChange={(e) => updateField("wait_time", Number(e.target.value))} className="min-h-[44px]" /></div>
-            </div>
-            <div>
-              <Label>Fremgangsmåde</Label>
-              <textarea
-                value={formData.instructions}
-                onChange={(e) => updateField("instructions", e.target.value)}
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px]"
-              />
-            </div>
 
-            {/* Ingredients section */}
-            <div className="space-y-2 pt-2 border-t">
-              <div className="flex items-center justify-between">
-                <Label className="text-base font-semibold">Ingredienser</Label>
-                <Button type="button" size="sm" variant="outline" onClick={() => { setShowProductSearch(true); setIngredientSearch(""); }} className="min-h-[36px] gap-1">
-                  <Plus className="h-3 w-3" /> Tilføj ingrediens
+          {showProductSearch ? (
+            /* Inline product search - replaces dialog content temporarily */
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowProductSearch(false)} className="min-h-[36px] gap-1 shrink-0">
+                  <ChevronLeft className="h-4 w-4" /> Tilbage
                 </Button>
+                <span className="text-sm font-medium">Vælg produkt</span>
               </div>
-
-              {activeIngredients.length === 0 && (
-                <p className="text-sm text-muted-foreground py-2">Ingen ingredienser tilføjet endnu</p>
-              )}
-
-              {activeIngredients.map((ing, idx) => {
-                const realIndex = ingredients.findIndex((i) => i === ing);
-                return (
-                  <div key={idx} className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 flex-1 min-w-0">
-                      <Checkbox
-                        checked={ing.is_staple}
-                        onCheckedChange={(checked) => updateIngredient(realIndex, "is_staple", !!checked)}
-                        className="h-4 w-4"
-                        title="Basisvare (tilføjes ikke til indkøbslisten)"
-                      />
-                      <span className={`text-sm truncate ${ing.is_staple ? "text-muted-foreground italic" : ""}`}>
-                        {ing.product_name}
-                        {ing.is_staple && <span className="text-xs ml-1">(basis)</span>}
-                      </span>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Søg i varekatalog..."
+                  value={ingredientSearch}
+                  onChange={(e) => setIngredientSearch(e.target.value)}
+                  className="pl-10 min-h-[44px]"
+                  autoFocus
+                />
+              </div>
+              <div className="max-h-[50vh] overflow-y-auto space-y-1">
+                {filteredProducts.map((product: any) => (
+                  <div
+                    key={product.id}
+                    className="flex items-center gap-2 p-2 rounded-md hover:bg-muted cursor-pointer transition-colors"
+                    onClick={() => addIngredientFromProduct(product)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{product.name}</div>
+                      <div className="text-xs text-muted-foreground">{product.item_categories?.name || "Ingen kategori"} · {product.unit || "stk"}</div>
                     </div>
-                    <Input
-                      type="number"
-                      value={ing.quantity}
-                      onChange={(e) => updateIngredient(realIndex, "quantity", Number(e.target.value))}
-                      className="w-20 min-h-[36px]"
-                      min={0.1}
-                      step={0.1}
-                    />
-                    <select
-                      value={ing.unit}
-                      onChange={(e) => updateIngredient(realIndex, "unit", e.target.value)}
-                      className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                    >
-                      {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                    <Button size="icon" variant="ghost" onClick={() => removeIngredient(realIndex)} className="min-h-[36px] min-w-[36px] text-destructive shrink-0">
-                      <X className="h-4 w-4" />
+                  </div>
+                ))}
+                {filteredProducts.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">Ingen produkter fundet</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Normal recipe editor form */
+            <>
+              <div className="space-y-3">
+                <div><Label>Titel</Label><Input value={formData.title} onChange={(e) => updateField("title", e.target.value)} className="min-h-[44px]" /></div>
+                <div><Label>Billede</Label><ImageUpload value={formData.image_url || null} onChange={(url) => updateField("image_url", url || "")} folder="recipes" /></div>
+                <div>
+                  <Label>Kategori</Label>
+                  <select value={formData.category} onChange={(e) => updateField("category", e.target.value)} className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    {categories.filter((c) => c !== "Alle").map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><Label>Køkkentid (min)</Label><Input type="number" value={formData.prep_time} onChange={(e) => updateField("prep_time", Number(e.target.value))} className="min-h-[44px]" /></div>
+                  <div><Label>Ventetid (min)</Label><Input type="number" value={formData.wait_time} onChange={(e) => updateField("wait_time", Number(e.target.value))} className="min-h-[44px]" /></div>
+                </div>
+                <div>
+                  <Label>Fremgangsmåde</Label>
+                  <textarea
+                    value={formData.instructions}
+                    onChange={(e) => updateField("instructions", e.target.value)}
+                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px]"
+                  />
+                </div>
+
+                {/* Ingredients section */}
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Ingredienser</Label>
+                    <Button type="button" size="sm" variant="outline" onClick={() => { setShowProductSearch(true); setIngredientSearch(""); }} className="min-h-[36px] gap-1">
+                      <Plus className="h-3 w-3" /> Tilføj ingrediens
                     </Button>
                   </div>
-                );
-              })}
-            </div>
 
-            <div className="flex items-center gap-2 pt-2 border-t">
-              <Switch checked={formData.is_favorite} onCheckedChange={(v) => updateField("is_favorite", v)} />
-              <Label>Favorit</Label>
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            {editingRecipe && (
-              <Button variant="destructive" onClick={() => { deleteRecipe.mutate(editingRecipe.id); setShowEditor(false); }} className="min-h-[44px]">Slet</Button>
-            )}
-            <Button
-              onClick={() => {
-                const payload = {
-                  ...formData,
-                  prep_time: formData.prep_time || null,
-                  wait_time: formData.wait_time || null,
-                  image_url: formData.image_url || null,
-                };
-                if (editingRecipe) (payload as any).id = editingRecipe.id;
-                saveRecipe.mutate(payload);
-              }}
-              disabled={!formData.title}
-              className="min-h-[44px]"
-            >
-              {editingRecipe ? "Gem" : "Opret"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  {activeIngredients.length === 0 && (
+                    <p className="text-sm text-muted-foreground py-2">Ingen ingredienser tilføjet endnu</p>
+                  )}
 
-      {/* Product search dialog for ingredients */}
-      <Dialog open={showProductSearch} onOpenChange={setShowProductSearch}>
-        <DialogContent className="max-w-md max-h-[70vh]">
-          <DialogHeader><DialogTitle>Vælg produkt</DialogTitle></DialogHeader>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Søg i varekatalog..."
-              value={ingredientSearch}
-              onChange={(e) => setIngredientSearch(e.target.value)}
-              className="pl-10 min-h-[44px]"
-              autoFocus
-            />
-          </div>
-          <div className="max-h-[50vh] overflow-y-auto space-y-1">
-            {filteredProducts.map((product: any) => (
-              <div
-                key={product.id}
-                className="flex items-center gap-2 p-2 rounded-md hover:bg-muted cursor-pointer transition-colors"
-                onClick={() => addIngredientFromProduct(product)}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{product.name}</div>
-                  <div className="text-xs text-muted-foreground">{product.item_categories?.name || "Ingen kategori"} · {product.unit || "stk"}</div>
+                  {activeIngredients.map((ing, idx) => {
+                    const realIndex = ingredients.findIndex((i) => i === ing);
+                    return (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 flex-1 min-w-0">
+                          <Checkbox
+                            checked={ing.is_staple}
+                            onCheckedChange={(checked) => updateIngredient(realIndex, "is_staple", !!checked)}
+                            className="h-4 w-4"
+                            title="Basisvare (tilføjes ikke til indkøbslisten)"
+                          />
+                          <span className={`text-sm truncate ${ing.is_staple ? "text-muted-foreground italic" : ""}`}>
+                            {ing.product_name}
+                            {ing.is_staple && <span className="text-xs ml-1">(basis)</span>}
+                          </span>
+                        </div>
+                        <Input
+                          type="number"
+                          value={ing.quantity}
+                          onChange={(e) => updateIngredient(realIndex, "quantity", Number(e.target.value))}
+                          className="w-20 min-h-[36px]"
+                          min={0.1}
+                          step={0.1}
+                        />
+                        <select
+                          value={ing.unit}
+                          onChange={(e) => updateIngredient(realIndex, "unit", e.target.value)}
+                          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        >
+                          {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                        <Button size="icon" variant="ghost" onClick={() => removeIngredient(realIndex)} className="min-h-[36px] min-w-[36px] text-destructive shrink-0">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t">
+                  <Switch checked={formData.is_favorite} onCheckedChange={(v) => updateField("is_favorite", v)} />
+                  <Label>Favorit</Label>
                 </div>
               </div>
-            ))}
-            {filteredProducts.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">Ingen produkter fundet</p>
-            )}
-          </div>
+              <DialogFooter className="gap-2">
+                {editingRecipe && (
+                  <Button variant="destructive" onClick={() => { deleteRecipe.mutate(editingRecipe.id); setShowEditor(false); }} className="min-h-[44px]">Slet</Button>
+                )}
+                <Button
+                  onClick={() => {
+                    const payload = {
+                      ...formData,
+                      prep_time: formData.prep_time || null,
+                      wait_time: formData.wait_time || null,
+                      image_url: formData.image_url || null,
+                    };
+                    if (editingRecipe) (payload as any).id = editingRecipe.id;
+                    saveRecipe.mutate(payload);
+                  }}
+                  disabled={!formData.title}
+                  className="min-h-[44px]"
+                >
+                  {editingRecipe ? "Gem" : "Opret"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
