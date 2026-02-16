@@ -79,6 +79,8 @@ export default function ShoppingListPage() {
   const [productAdminSearch, setProductAdminSearch] = useState("");
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
+  const [editingLine, setEditingLine] = useState<any>(null);
+  const [editLineQty, setEditLineQty] = useState(1);
   const [newProduct, setNewProduct] = useState({
     name: "", unit: "stk", category_id: "", description: "", size_label: "",
     price: "", image_url: "", is_favorite: false,
@@ -271,6 +273,16 @@ export default function ShoppingListPage() {
       await supabase.from("shopping_list_items").delete().eq("id", id);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] }),
+  });
+
+  const updateItemQty = useMutation({
+    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
+      await supabase.from("shopping_list_items").update({ quantity }).eq("id", id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+      setEditingLine(null);
+    },
   });
 
   const addCategory = useMutation({
@@ -535,6 +547,11 @@ export default function ShoppingListPage() {
                           <Badge variant={line.source_type === "recipe" ? "secondary" : "outline"} className="text-xs">
                             {line.source_type === "recipe" ? (line.recipes?.title || "Opskrift") : "Manuel"}
                           </Badge>
+                          {line.source_type === "manual" && (
+                            <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingLine(line); setEditLineQty(Number(line.quantity)); }} className="min-h-[36px] min-w-[36px]">
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          )}
                           <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); deleteItem.mutate(line.id); }} className="min-h-[36px] min-w-[36px] text-destructive">
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -731,6 +748,33 @@ export default function ShoppingListPage() {
           <DialogFooter>
             <Button onClick={() => editingProduct && updateProductMutation.mutate(editingProduct)} className="min-h-[44px]">Gem ændringer</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit line quantity dialog */}
+      <Dialog open={!!editingLine} onOpenChange={() => setEditingLine(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Rediger antal</DialogTitle></DialogHeader>
+          {editingLine && (
+            <div className="space-y-3">
+              <p className="text-sm">{editingLine.product_name}</p>
+              <div>
+                <Label>Antal</Label>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" className="min-h-[44px] min-w-[44px]" onClick={() => setEditLineQty(Math.max(1, editLineQty - 1))} disabled={editLineQty <= 1}>
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <Input type="number" value={editLineQty} onChange={(e) => setEditLineQty(Math.max(1, Math.floor(Number(e.target.value))))} min={1} step={1} className="min-h-[44px] text-center flex-1" />
+                  <Button variant="outline" size="icon" className="min-h-[44px] min-w-[44px]" onClick={() => setEditLineQty(editLineQty + 1)}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => updateItemQty.mutate({ id: editingLine.id, quantity: editLineQty })} className="min-h-[44px] w-full">Gem</Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

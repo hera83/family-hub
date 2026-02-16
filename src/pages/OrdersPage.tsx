@@ -1,21 +1,36 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Package, FileText } from "lucide-react";
+import { Package, FileText, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { da } from "date-fns/locale";
 
 export default function OrdersPage() {
+  const queryClient = useQueryClient();
   const [pdfData, setPdfData] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
-  const { data: orders = [] } = useQuery({
+  const { data: ordersData } = useQuery({
     queryKey: ["orders"],
     queryFn: async () => {
       const { data } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
       return data || [];
     },
+  });
+
+  const orders = ordersData || [];
+  const totalPages = Math.ceil(orders.length / PAGE_SIZE);
+  const pagedOrders = orders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const deleteOrder = useMutation({
+    mutationFn: async (id: string) => {
+      await supabase.from("order_lines").delete().eq("order_id", id);
+      await supabase.from("orders").delete().eq("id", id);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
   });
 
   const openPdf = (base64: string) => {
@@ -39,10 +54,11 @@ export default function OrdersPage() {
                 <th className="text-left p-3 text-sm font-medium">Bestillingsdato</th>
                 <th className="text-left p-3 text-sm font-medium">Samlet pris</th>
                 <th className="text-left p-3 text-sm font-medium">Åben</th>
+                <th className="text-left p-3 text-sm font-medium"></th>
               </tr>
             </thead>
             <tbody>
-              {orders.map((order: any) => (
+              {pagedOrders.map((order: any) => (
                 <tr key={order.id} className="border-t">
                   <td className="p-3 text-sm">{format(new Date(order.created_at), "d. MMM yyyy, HH:mm", { locale: da })}</td>
                   <td className="p-3 text-sm">
@@ -59,10 +75,28 @@ export default function OrdersPage() {
                       <span className="text-xs text-muted-foreground">Ingen PDF</span>
                     )}
                   </td>
+                  <td className="p-3">
+                    <Button size="icon" variant="ghost" onClick={() => deleteOrder.mutate(order.id)} className="min-h-[36px] min-w-[36px] text-destructive">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 pt-2">
+          <Button variant="outline" size="icon" disabled={page <= 1} onClick={() => setPage(page - 1)} className="min-h-[44px] min-w-[44px]">
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <span className="text-sm text-muted-foreground">Side {page} af {totalPages}</span>
+          <Button variant="outline" size="icon" disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="min-h-[44px] min-w-[44px]">
+            <ChevronRight className="h-5 w-5" />
+          </Button>
         </div>
       )}
 
