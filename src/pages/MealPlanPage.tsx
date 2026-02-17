@@ -199,21 +199,27 @@ export default function MealPlanPage() {
       const toPlan = mealPlans.find((mp: any) => mp.day_of_week === toDay);
 
       if (fromPlan && toPlan) {
-        await supabase.from("meal_plans").update({ recipe_id: toPlan.recipe_id }).eq("id", fromPlan.id);
-        await supabase.from("meal_plans").update({ recipe_id: fromPlan.recipe_id }).eq("id", toPlan.id);
+        // Swap day_of_week and plan_date, keep IDs stable
+        const fromDate = new Date(weekStart);
+        fromDate.setDate(fromDate.getDate() + fromDay);
+        const toDate = new Date(weekStart);
+        toDate.setDate(toDate.getDate() + toDay);
+        await supabase.from("meal_plans").update({ day_of_week: toDay, plan_date: format(toDate, "yyyy-MM-dd") }).eq("id", fromPlan.id);
+        await supabase.from("meal_plans").update({ day_of_week: fromDay, plan_date: format(fromDate, "yyyy-MM-dd") }).eq("id", toPlan.id);
       } else if (fromPlan && !toPlan) {
+        // Move to empty day: only update date fields, keep same ID
         const date = new Date(weekStart);
         date.setDate(date.getDate() + toDay);
-        await supabase.from("meal_plans").insert({
+        await supabase.from("meal_plans").update({
           day_of_week: toDay,
-          recipe_id: fromPlan.recipe_id,
-          week_start: weekStartStr,
           plan_date: format(date, "yyyy-MM-dd"),
-        });
-        await supabase.from("meal_plans").delete().eq("id", fromPlan.id);
+        }).eq("id", fromPlan.id);
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meal_plans"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["meal_plans"] });
+      queryClient.invalidateQueries({ queryKey: ["meal_plan_order_status"] });
+    },
   });
 
   const getMealForDay = (dayIndex: number) => {
