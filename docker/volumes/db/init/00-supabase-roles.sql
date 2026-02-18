@@ -60,6 +60,7 @@ CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
 CREATE SCHEMA IF NOT EXISTS storage AUTHORIZATION supabase_storage_admin;
 CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE SCHEMA IF NOT EXISTS _realtime;
+GRANT ALL ON SCHEMA _realtime TO supabase_admin;
 
 -- Grant usage
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
