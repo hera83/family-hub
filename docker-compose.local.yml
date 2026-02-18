@@ -38,6 +38,8 @@ services:
       JWT_EXP: 3600
     volumes:
       - db_data:/var/lib/postgresql/data
+      - ./docker/volumes/db/init/00-run-roles.sh:/docker-entrypoint-initdb.d/00-run-roles.sh:ro
+      - ./docker/volumes/db/init/00-supabase-roles.sql:/docker-entrypoint-initdb.d/00-supabase-roles.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U supabase_admin -d postgres"]
       interval: 5s
@@ -151,6 +153,7 @@ services:
       ERL_AFLAGS: -proto_dist inet_tcp
       ENABLE_TAILSCALE: "false"
       DNS_NODES: "''"
+      RLIMIT_NOFILE: "10000"
     depends_on:
       db:
         condition: service_healthy
