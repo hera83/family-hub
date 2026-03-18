@@ -14,21 +14,6 @@ import { Plus, Pencil, Search, ChevronLeft, ChevronRight, UtensilsCrossed, Heart
 
 const PAGE_SIZE = 10;
 const UNITS = ["stk", "kg", "g", "l", "dl", "ml", "pakke", "spsk", "tsk", "dåse"];
-const DEFAULT_CATEGORIES = ["Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
-
-function getDeletedCategories(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem("deleted_recipe_categories") || "[]");
-  } catch { return []; }
-}
-function addDeletedCategory(cat: string) {
-  const list = getDeletedCategories();
-  if (!list.includes(cat)) { list.push(cat); localStorage.setItem("deleted_recipe_categories", JSON.stringify(list)); }
-}
-function removeDeletedCategory(cat: string) {
-  const list = getDeletedCategories().filter(c => c !== cat);
-  localStorage.setItem("deleted_recipe_categories", JSON.stringify(list));
-}
 
 const emptyRecipe = {
   title: "", image_url: "", description: "", category: "Hovedret", prep_time: 30 as number | string, wait_time: 0 as number | string,
