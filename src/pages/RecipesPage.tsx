@@ -63,6 +63,7 @@ export default function RecipesPage() {
   const [newCategory, setNewCategory] = useState("");
   const [editingCategory, setEditingCategory] = useState<{ idx: number; value: string } | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
+  const [categoryVersion, setCategoryVersion] = useState(0);
 
   // Ingredients state
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
