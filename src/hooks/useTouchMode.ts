@@ -63,5 +63,5 @@ export function useTouchMode() {
     };
   }, [isTouchMode]);
 
-  return { isTouchMode, isDimmed, resetTimer, toggleTouchMode };
+  return { isTouchMode, isDimmed, resetTimer, triggerDim, toggleTouchMode };
 }

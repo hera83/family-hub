@@ -26,6 +26,11 @@ export function AppLayout({ children }: AppLayoutProps) {
               <h1 className="text-lg font-semibold text-foreground">Familiens Assistent</h1>
             </div>
             <div className="flex items-center gap-1">
+              {isTouchMode && (
+                <Button variant="ghost" size="icon" onClick={triggerDim} className="min-h-[44px] min-w-[44px]" title="Strømbesparelse">
+                  <MonitorOff className="h-5 w-5" />
+                </Button>
+              )}
               <Button variant="ghost" size="icon" onClick={toggleTouchMode} className="min-h-[44px] min-w-[44px]" title={isTouchMode ? "Sluk skærmtastatur" : "Tænd skærmtastatur"}>
                 {isTouchMode ? <Keyboard className="h-5 w-5" /> : <KeyboardOff className="h-5 w-5" />}
               </Button>
