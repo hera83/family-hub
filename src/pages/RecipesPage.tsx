@@ -93,11 +93,13 @@ export default function RecipesPage() {
   });
 
   const categories = useMemo(() => {
+    // categoryVersion is used to force recalculation after localStorage changes
+    void categoryVersion;
     const deleted = getDeletedCategories();
     const cats = new Set<string>(DEFAULT_CATEGORIES.filter(c => !deleted.includes(c)));
     allRecipes.forEach((r: any) => { if (r.category && !deleted.includes(r.category)) cats.add(r.category); });
     return ["Alle", ...Array.from(cats)];
-  }, [allRecipes]);
+  }, [allRecipes, categoryVersion]);
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
