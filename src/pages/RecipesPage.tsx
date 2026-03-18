@@ -475,6 +475,7 @@ export default function RecipesPage() {
               if (!deletingCategory) return;
               await supabase.from("recipes").update({ category: null }).eq("category", deletingCategory);
               addDeletedCategory(deletingCategory);
+              setCategoryVersion(v => v + 1);
               queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
               queryClient.invalidateQueries({ queryKey: ["recipes"] });
               queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
