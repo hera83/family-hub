@@ -378,9 +378,9 @@ export default function RecipesPage() {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Kategorier</DialogTitle></DialogHeader>
           <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-            {categories.filter(c => c !== "Alle").map((cat, idx) => (
-              <div key={cat} className="flex items-center gap-2">
-                {editingCategory?.idx === idx ? (
+            {dbCategories.map((cat: any) => (
+              <div key={cat.id} className="flex items-center gap-2">
+                {editingCategory?.id === cat.id ? (
                   <>
                     <Input
                       value={editingCategory.value}
@@ -388,16 +388,11 @@ export default function RecipesPage() {
                       className="flex-1 min-h-[44px]"
                     />
                     <Button size="sm" onClick={async () => {
-                      if (editingCategory.value && editingCategory.value !== cat) {
-                        // Update recipes in DB
-                        await supabase.from("recipes").update({ category: editingCategory.value }).eq("category", cat);
-                        // If renaming a default category, block the old name and unblock the new
-                        addDeletedCategory(cat);
-                        removeDeletedCategory(editingCategory.value);
-                        setCategoryVersion(v => v + 1);
+                      if (editingCategory.value && editingCategory.value !== cat.name) {
+                        await supabase.from("recipe_categories").update({ name: editingCategory.value }).eq("id", cat.id);
+                        await supabase.from("recipes").update({ category: editingCategory.value }).eq("category", cat.name);
+                        queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
                         queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
-                        queryClient.invalidateQueries({ queryKey: ["recipes"] });
-                        queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
                       }
                       setEditingCategory(null);
                     }} className="min-h-[44px]">Gem</Button>
@@ -405,9 +400,9 @@ export default function RecipesPage() {
                   </>
                 ) : (
                   <>
-                    <span className="flex-1 text-sm">{cat}</span>
-                    <Button size="icon" variant="ghost" onClick={() => setEditingCategory({ idx, value: cat })} className="min-h-[44px] min-w-[44px]"><Pencil className="h-4 w-4" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => setDeletingCategory(cat)} className="min-h-[44px] min-w-[44px] text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                    <span className="flex-1 text-sm">{cat.name}</span>
+                    <Button size="icon" variant="ghost" onClick={() => setEditingCategory({ id: cat.id, value: cat.name })} className="min-h-[44px] min-w-[44px]"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => setDeletingCategory({ id: cat.id, name: cat.name })} className="min-h-[44px] min-w-[44px] text-destructive"><Trash2 className="h-4 w-4" /></Button>
                   </>
                 )}
               </div>
@@ -420,11 +415,11 @@ export default function RecipesPage() {
                 className="flex-1 min-h-[44px]"
               />
               <Button
-                onClick={() => {
+                onClick={async () => {
                   if (newCategory.trim()) {
-                    removeDeletedCategory(newCategory.trim());
-                    setCategoryVersion(v => v + 1);
-                    queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
+                    const maxOrder = dbCategories.length > 0 ? Math.max(...dbCategories.map((c: any) => c.sort_order)) : 0;
+                    await supabase.from("recipe_categories").insert({ name: newCategory.trim(), sort_order: maxOrder + 1 });
+                    queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
                     setNewCategory("");
                   }
                 }}
@@ -444,19 +439,17 @@ export default function RecipesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Slet kategori</AlertDialogTitle>
             <AlertDialogDescription>
-              Er du sikker på, at du vil slette kategorien "{deletingCategory}"? Opskrifter med denne kategori vil blive sat til "Ukategoriseret".
+              Er du sikker på, at du vil slette kategorien "{deletingCategory?.name}"? Opskrifter med denne kategori vil blive sat til "Ukategoriseret".
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-[44px]">Annuller</AlertDialogCancel>
             <AlertDialogAction className="min-h-[44px]" onClick={async () => {
               if (!deletingCategory) return;
-              await supabase.from("recipes").update({ category: null }).eq("category", deletingCategory);
-              addDeletedCategory(deletingCategory);
-              setCategoryVersion(v => v + 1);
+              await supabase.from("recipes").update({ category: null }).eq("category", deletingCategory.name);
+              await supabase.from("recipe_categories").delete().eq("id", deletingCategory.id);
+              queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
               queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
-              queryClient.invalidateQueries({ queryKey: ["recipes"] });
-              queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
               setDeletingCategory(null);
             }}>Slet</AlertDialogAction>
           </AlertDialogFooter>
