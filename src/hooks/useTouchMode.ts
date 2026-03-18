@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 const COOKIE_NAME = "touch_mode";
@@ -9,13 +9,13 @@ function getCookie(name: string): string | null {
 }
 
 function setCookie(name: string, value: string) {
-  // No expiry = effectively permanent (max-age ~68 years)
   document.cookie = `${name}=${value};path=/;max-age=2147483647;SameSite=Lax`;
 }
 
 export function useTouchMode() {
   const [isTouchMode, setIsTouchMode] = useState(() => getCookie(COOKIE_NAME) === "true");
   const [isDimmed, setIsDimmed] = useState(false);
+  const manualDimRef = useRef(false);
 
   const toggleTouchMode = useCallback(() => {
     setIsTouchMode((prev) => {
@@ -26,10 +26,12 @@ export function useTouchMode() {
   }, []);
 
   const resetTimer = useCallback(() => {
+    manualDimRef.current = false;
     setIsDimmed(false);
   }, []);
 
   const triggerDim = useCallback(() => {
+    manualDimRef.current = true;
     setIsDimmed(true);
   }, []);
 
@@ -48,6 +50,8 @@ export function useTouchMode() {
     let timer: ReturnType<typeof setTimeout>;
 
     const startTimer = () => {
+      // Don't reset if manually dimmed — the dim-overlay's own click handler will reset
+      if (manualDimRef.current) return;
       clearTimeout(timer);
       setIsDimmed(false);
       timer = setTimeout(() => setIsDimmed(true), INACTIVITY_TIMEOUT);
