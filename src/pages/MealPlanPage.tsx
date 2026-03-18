@@ -12,7 +12,6 @@ import { format, startOfWeek, addWeeks, subWeeks } from "date-fns";
 import { da } from "date-fns/locale";
 
 const DAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
-const CATEGORIES = ["Alle", "Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 
 function normalizeToBase(qty: number, unit: string): { value: number; type: "weight" | "volume" | "unknown" } {
   const u = unit.toLowerCase().trim();
@@ -111,6 +110,18 @@ export default function MealPlanPage() {
       return data || [];
     },
   });
+
+  const { data: recipeCategories = [] } = useQuery({
+    queryKey: ["recipe_categories"],
+    queryFn: async () => {
+      const { data } = await supabase.from("recipe_categories").select("*").order("sort_order");
+      return data || [];
+    },
+  });
+
+  const CATEGORIES = useMemo(() => {
+    return ["Alle", ...recipeCategories.map((c: any) => c.name)];
+  }, [recipeCategories]);
 
   // Fetch order status per meal_plan entry id in one query
   const mealPlanIds = useMemo(() => {
