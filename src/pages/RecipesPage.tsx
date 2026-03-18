@@ -171,7 +171,6 @@ export default function RecipesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
-      queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
       setShowEditor(false);
     },
   });
