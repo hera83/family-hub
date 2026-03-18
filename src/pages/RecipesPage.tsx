@@ -54,36 +54,18 @@ export default function RecipesPage() {
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [showProductSearch, setShowProductSearch] = useState(false);
 
-  // Recipe categories from DB - store as simple strings in recipes.category
-  // For admin, we manage a local list that maps to the distinct categories used
-  const { data: recipesData } = useQuery({
-    queryKey: ["recipes_paginated", searchQuery, categoryFilter, page],
+  // Categories from DB
+  const { data: dbCategories = [] } = useQuery({
+    queryKey: ["recipe_categories"],
     queryFn: async () => {
-      let query = supabase.from("recipes").select("*", { count: "exact" });
-      if (categoryFilter !== "Alle") query = query.eq("category", categoryFilter);
-      if (searchQuery) query = query.ilike("title", `%${searchQuery}%`);
-      const { data, count } = await query.order("created_at", { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-      return { recipes: data || [], total: count || 0 };
-    },
-  });
-
-  // Get distinct categories from recipes
-  const { data: allRecipes = [] } = useQuery({
-    queryKey: ["all_recipes_categories"],
-    queryFn: async () => {
-      const { data } = await supabase.from("recipes").select("category");
+      const { data } = await supabase.from("recipe_categories").select("*").order("sort_order");
       return data || [];
     },
   });
 
   const categories = useMemo(() => {
-    // categoryVersion is used to force recalculation after localStorage changes
-    void categoryVersion;
-    const deleted = getDeletedCategories();
-    const cats = new Set<string>(DEFAULT_CATEGORIES.filter(c => !deleted.includes(c)));
-    allRecipes.forEach((r: any) => { if (r.category && !deleted.includes(r.category)) cats.add(r.category); });
-    return ["Alle", ...Array.from(cats)];
-  }, [allRecipes, categoryVersion]);
+    return ["Alle", ...dbCategories.map((c: any) => c.name)];
+  }, [dbCategories]);
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
