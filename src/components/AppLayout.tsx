@@ -3,7 +3,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useTouchMode } from "@/hooks/useTouchMode";
 import { useTheme } from "@/hooks/useTheme";
-import { Sun, Moon, Keyboard, KeyboardOff } from "lucide-react";
+import { Sun, Moon, Keyboard, KeyboardOff, MonitorOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VirtualKeyboard } from "@/components/VirtualKeyboard";
 
