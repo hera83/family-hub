@@ -29,6 +29,10 @@ export function useTouchMode() {
     setIsDimmed(false);
   }, []);
 
+  const triggerDim = useCallback(() => {
+    setIsDimmed(true);
+  }, []);
+
   useEffect(() => {
     if (!isTouchMode) {
       document.documentElement.classList.remove("touch-mode");
@@ -59,5 +63,5 @@ export function useTouchMode() {
     };
   }, [isTouchMode]);
 
-  return { isTouchMode, isDimmed, resetTimer, toggleTouchMode };
+  return { isTouchMode, isDimmed, resetTimer, triggerDim, toggleTouchMode };
 }
