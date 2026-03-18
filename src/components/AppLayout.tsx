@@ -12,7 +12,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const { isTouchMode, isDimmed, resetTimer, toggleTouchMode } = useTouchMode();
+  const { isTouchMode, isDimmed, resetTimer, triggerDim, toggleTouchMode } = useTouchMode();
   const { theme, toggleTheme } = useTheme();
 
   return (
