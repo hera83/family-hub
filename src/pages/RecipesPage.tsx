@@ -67,6 +67,18 @@ export default function RecipesPage() {
     return ["Alle", ...dbCategories.map((c: any) => c.name)];
   }, [dbCategories]);
 
+
+  const { data: recipesData } = useQuery({
+    queryKey: ["recipes_paginated", searchQuery, categoryFilter, page],
+    queryFn: async () => {
+      let query = supabase.from("recipes").select("*", { count: "exact" });
+      if (categoryFilter !== "Alle") query = query.eq("category", categoryFilter);
+      if (searchQuery) query = query.ilike("title", `%${searchQuery}%`);
+      const { data, count } = await query.order("created_at", { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+      return { recipes: data || [], total: count || 0 };
+    },
+  });
+
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
