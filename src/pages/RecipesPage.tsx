@@ -445,6 +445,7 @@ export default function RecipesPage() {
                 onClick={() => {
                   if (newCategory.trim()) {
                     removeDeletedCategory(newCategory.trim());
+                    setCategoryVersion(v => v + 1);
                     queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
                     setNewCategory("");
                   }
