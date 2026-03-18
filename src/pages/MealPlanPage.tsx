@@ -12,7 +12,6 @@ import { format, startOfWeek, addWeeks, subWeeks } from "date-fns";
 import { da } from "date-fns/locale";
 
 const DAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
-const CATEGORIES = ["Alle", "Forret", "Hovedret", "Dessert", "Pasta", "Vegetarisk", "Salat", "Suppe"];
 
 function normalizeToBase(qty: number, unit: string): { value: number; type: "weight" | "volume" | "unknown" } {
   const u = unit.toLowerCase().trim();
