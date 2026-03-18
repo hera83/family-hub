@@ -138,7 +138,7 @@ body.vkb-active {
 .dim-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.92);
   z-index: 9999;
   pointer-events: all;
   transition: opacity 0.5s ease;
