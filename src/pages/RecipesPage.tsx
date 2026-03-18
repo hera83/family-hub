@@ -63,6 +63,7 @@ export default function RecipesPage() {
   const [newCategory, setNewCategory] = useState("");
   const [editingCategory, setEditingCategory] = useState<{ idx: number; value: string } | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
+  const [categoryVersion, setCategoryVersion] = useState(0);
 
   // Ingredients state
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
@@ -92,11 +93,13 @@ export default function RecipesPage() {
   });
 
   const categories = useMemo(() => {
+    // categoryVersion is used to force recalculation after localStorage changes
+    void categoryVersion;
     const deleted = getDeletedCategories();
     const cats = new Set<string>(DEFAULT_CATEGORIES.filter(c => !deleted.includes(c)));
     allRecipes.forEach((r: any) => { if (r.category && !deleted.includes(r.category)) cats.add(r.category); });
     return ["Alle", ...Array.from(cats)];
-  }, [allRecipes]);
+  }, [allRecipes, categoryVersion]);
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
@@ -407,9 +410,13 @@ export default function RecipesPage() {
                       className="flex-1 min-h-[44px]"
                     />
                     <Button size="sm" onClick={async () => {
-                      // Update all recipes with old category to new
                       if (editingCategory.value && editingCategory.value !== cat) {
+                        // Update recipes in DB
                         await supabase.from("recipes").update({ category: editingCategory.value }).eq("category", cat);
+                        // If renaming a default category, block the old name and unblock the new
+                        addDeletedCategory(cat);
+                        removeDeletedCategory(editingCategory.value);
+                        setCategoryVersion(v => v + 1);
                         queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
                         queryClient.invalidateQueries({ queryKey: ["recipes"] });
                         queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
@@ -438,6 +445,7 @@ export default function RecipesPage() {
                 onClick={() => {
                   if (newCategory.trim()) {
                     removeDeletedCategory(newCategory.trim());
+                    setCategoryVersion(v => v + 1);
                     queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
                     setNewCategory("");
                   }
@@ -467,6 +475,7 @@ export default function RecipesPage() {
               if (!deletingCategory) return;
               await supabase.from("recipes").update({ category: null }).eq("category", deletingCategory);
               addDeletedCategory(deletingCategory);
+              setCategoryVersion(v => v + 1);
               queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
               queryClient.invalidateQueries({ queryKey: ["recipes"] });
               queryClient.invalidateQueries({ queryKey: ["all_recipes_categories"] });
