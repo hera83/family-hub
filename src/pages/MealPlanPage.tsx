@@ -111,6 +111,18 @@ export default function MealPlanPage() {
     },
   });
 
+  const { data: recipeCategories = [] } = useQuery({
+    queryKey: ["recipe_categories"],
+    queryFn: async () => {
+      const { data } = await supabase.from("recipe_categories").select("*").order("sort_order");
+      return data || [];
+    },
+  });
+
+  const CATEGORIES = useMemo(() => {
+    return ["Alle", ...recipeCategories.map((c: any) => c.name)];
+  }, [recipeCategories]);
+
   // Fetch order status per meal_plan entry id in one query
   const mealPlanIds = useMemo(() => {
     return mealPlans.map((mp: any) => mp.id).filter(Boolean) as string[];
