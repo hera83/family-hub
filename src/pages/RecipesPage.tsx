@@ -46,9 +46,8 @@ export default function RecipesPage() {
   const [formData, setFormData] = useState(emptyRecipe);
   const [showAdmin, setShowAdmin] = useState(false);
   const [newCategory, setNewCategory] = useState("");
-  const [editingCategory, setEditingCategory] = useState<{ idx: number; value: string } | null>(null);
-  const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
-  const [categoryVersion, setCategoryVersion] = useState(0);
+  const [editingCategory, setEditingCategory] = useState<{ id: string; value: string } | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<{ id: string; name: string } | null>(null);
 
   // Ingredients state
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
