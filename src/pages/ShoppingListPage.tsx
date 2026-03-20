@@ -1,6 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { catalogApi } from "@/lib/api/catalogApi";
+import { shoppingApi } from "@/lib/api/shoppingApi";
+import { ordersApi } from "@/lib/api/ordersApi";
+import { qk } from "@/lib/api/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -88,39 +91,23 @@ export default function ShoppingListPage() {
   });
 
   const { data: items = [] } = useQuery({
-    queryKey: ["shopping_list_items"],
-    queryFn: async () => {
-      const { data } = await supabase.from("shopping_list_items").select("*, item_categories(name, sort_order), recipes(title)").eq("is_ordered", false).order("created_at");
-      return data || [];
-    },
+    queryKey: qk.shoppingListItems,
+    queryFn: () => shoppingApi.getItems(),
   });
 
   const { data: categories = [] } = useQuery({
-    queryKey: ["item_categories"],
-    queryFn: async () => {
-      const { data } = await supabase.from("item_categories").select("*").order("sort_order");
-      return data || [];
-    },
+    queryKey: qk.itemCategories,
+    queryFn: () => catalogApi.getItemCategories(),
   });
 
   const { data: products = [] } = useQuery({
-    queryKey: ["products_catalog"],
-    queryFn: async () => {
-      const { data } = await supabase.from("products").select("*, item_categories(name)").order("name");
-      return data || [];
-    },
+    queryKey: qk.productsCatalog,
+    queryFn: () => catalogApi.getProducts(),
   });
 
   const { data: topProducts = [] } = useQuery({
-    queryKey: ["top_products"],
-    queryFn: async () => {
-      const { data } = await supabase.from("order_lines").select("product_name");
-      if (!data) return [];
-      const counts: Record<string, number> = {};
-      data.forEach((l: any) => { counts[l.product_name] = (counts[l.product_name] || 0) + 1; });
-      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name]) => name);
-      return sorted;
-    },
+    queryKey: qk.topProducts,
+    queryFn: () => catalogApi.getTopProducts(),
   });
 
   const groupedByProduct = useMemo(() => {
@@ -188,25 +175,23 @@ export default function ShoppingListPage() {
   }, [products, productSearch, favoritesOnly, topProducts]);
 
   const toggleCheck = useMutation({
-    mutationFn: async ({ id, checked }: { id: string; checked: boolean }) => {
-      await supabase.from("shopping_list_items").update({ is_checked: checked }).eq("id", id);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] }),
+    mutationFn: ({ id, checked }: { id: string; checked: boolean }) =>
+      shoppingApi.updateItem(id, { is_checked: checked }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.shoppingListItems }),
   });
 
   const addItemFromProduct = useMutation({
-    mutationFn: async ({ product, quantity }: { product: any; quantity: number }) => {
-      await supabase.from("shopping_list_items").insert({
+    mutationFn: ({ product, quantity }: { product: any; quantity: number }) =>
+      shoppingApi.addItem({
         product_name: product.name,
         product_id: product.id,
         category_id: product.category_id || null,
         quantity,
         unit: product.unit || "stk",
         source_type: "manual",
-      });
-    },
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+      queryClient.invalidateQueries({ queryKey: qk.shoppingListItems });
       setShowAddItem(false);
       setSelectedProduct(null);
       setAddQuantity(1);
@@ -215,8 +200,8 @@ export default function ShoppingListPage() {
   });
 
   const createProductMutation = useMutation({
-    mutationFn: async (product: any) => {
-      const { data } = await supabase.from("products").insert({
+    mutationFn: (product: any) =>
+      catalogApi.createProduct({
         name: product.name,
         unit: product.unit,
         category_id: product.category_id || null,
@@ -232,20 +217,18 @@ export default function ShoppingListPage() {
         carbs_per_100g: product.carbs_per_100g ? parseFloat(product.carbs_per_100g) : null,
         protein_per_100g: product.protein_per_100g ? parseFloat(product.protein_per_100g) : null,
         fiber_per_100g: product.fiber_per_100g ? parseFloat(product.fiber_per_100g) : null,
-      }).select("*, item_categories(name)").single();
-      return data;
-    },
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products_catalog"] });
+      queryClient.invalidateQueries({ queryKey: qk.productsCatalog });
       setShowCreateProduct(false);
       resetNewProduct();
     },
   });
 
   const updateProductMutation = useMutation({
-    mutationFn: async (product: any) => {
+    mutationFn: (product: any) => {
       const { id, item_categories, ...rest } = product;
-      await supabase.from("products").update({
+      return catalogApi.updateProduct(id, {
         ...rest,
         price: rest.price ? parseFloat(rest.price.toString().replace(",", ".")) : null,
         calories_per_100g: rest.calories_per_100g ? parseFloat(rest.calories_per_100g) : null,
@@ -253,66 +236,57 @@ export default function ShoppingListPage() {
         carbs_per_100g: rest.carbs_per_100g ? parseFloat(rest.carbs_per_100g) : null,
         protein_per_100g: rest.protein_per_100g ? parseFloat(rest.protein_per_100g) : null,
         fiber_per_100g: rest.fiber_per_100g ? parseFloat(rest.fiber_per_100g) : null,
-      }).eq("id", id);
+      });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products_catalog"] });
+      queryClient.invalidateQueries({ queryKey: qk.productsCatalog });
       setEditingProduct(null);
     },
   });
 
   const deleteProductMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("products").delete().eq("id", id);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["products_catalog"] }),
+    mutationFn: (id: string) => catalogApi.deleteProduct(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.productsCatalog }),
   });
 
   const deleteItem = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("shopping_list_items").delete().eq("id", id);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] }),
+    mutationFn: (id: string) => shoppingApi.deleteItem(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.shoppingListItems }),
   });
 
   const updateItemQty = useMutation({
-    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
-      await supabase.from("shopping_list_items").update({ quantity }).eq("id", id);
-    },
+    mutationFn: ({ id, quantity }: { id: string; quantity: number }) =>
+      shoppingApi.updateItem(id, { quantity }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+      queryClient.invalidateQueries({ queryKey: qk.shoppingListItems });
       setEditingLine(null);
     },
   });
 
   const addCategory = useMutation({
-    mutationFn: async (cat: { name: string; sort_order: number }) => {
-      await supabase.from("item_categories").insert(cat);
-    },
+    mutationFn: (cat: { name: string; sort_order: number }) =>
+      catalogApi.createItemCategory(cat),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["item_categories"] });
+      queryClient.invalidateQueries({ queryKey: qk.itemCategories });
       setNewCategory({ name: "", sort_order: categories.length + 1 });
     },
   });
 
   const updateCategory = useMutation({
-    mutationFn: async ({ id, ...data }: any) => {
-      await supabase.from("item_categories").update(data).eq("id", id);
-    },
+    mutationFn: ({ id, ...data }: any) =>
+      catalogApi.updateItemCategory(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["item_categories"] });
-      queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+      queryClient.invalidateQueries({ queryKey: qk.itemCategories });
+      queryClient.invalidateQueries({ queryKey: qk.shoppingListItems });
       setEditingCategory(null);
     },
   });
 
   const deleteCategory = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("item_categories").delete().eq("id", id);
-    },
+    mutationFn: (id: string) => catalogApi.deleteItemCategory(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["item_categories"] });
-      queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+      queryClient.invalidateQueries({ queryKey: qk.itemCategories });
+      queryClient.invalidateQueries({ queryKey: qk.shoppingListItems });
     },
   });
 
@@ -401,36 +375,32 @@ export default function ShoppingListPage() {
       const rawPdf = doc.output("datauristring");
       const pdfBase64 = rawPdf.replace(/;filename=[^;]*/, "");
 
-      const { data: order } = await supabase.from("orders").insert({
+      await ordersApi.create({
         status: "completed",
         total_items: aggregated.reduce((s, a) => s + a.totalQty, 0),
         total_price: orderTotal,
         pdf_data: pdfBase64,
-      }).select().single();
+        lines: aggregated.map((a) => ({
+          product_name: a.product_name,
+          quantity: a.totalQty,
+          unit: a.unit,
+          category_name: a.category_name,
+          price: a.price,
+          size_label: a.size_label || null,
+        })),
+      });
 
-      if (!order) return;
-
-      const lines = aggregated.map((a) => ({
-        order_id: order.id,
-        product_name: a.product_name,
-        quantity: a.totalQty,
-        unit: a.unit,
-        category_name: a.category_name,
-        price: a.price,
-        size_label: a.size_label || null,
-      }));
-      await supabase.from("order_lines").insert(lines);
-
-      const ids = unchecked.map((i: any) => i.id);
-      await supabase.from("shopping_list_items").update({
-        is_ordered: true,
-        order_id: order.id,
-        ordered_at: new Date().toISOString(),
-      }).in("id", ids);
+      // Mark items as ordered via API
+      for (const item of unchecked) {
+        await shoppingApi.updateItem(item.id, {
+          is_ordered: true,
+          ordered_at: new Date().toISOString(),
+        });
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+      queryClient.invalidateQueries({ queryKey: qk.orders });
+      queryClient.invalidateQueries({ queryKey: qk.shoppingListItems });
       queryClient.invalidateQueries({ queryKey: ["meal_plan_order_status"] });
     },
   });
@@ -494,7 +464,6 @@ export default function ShoppingListPage() {
         </div>
       </div>
 
-      {/* Grouped display - always folded (consistent look) */}
       {groupedByCategory.map((catGroup) => (
         <div key={catGroup.category} className="space-y-1">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide px-1">{catGroup.category}</h3>
@@ -623,32 +592,11 @@ export default function ShoppingListPage() {
               <div>
                 <Label>Antal</Label>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="min-h-[44px] min-w-[44px]"
-                    onClick={() => setAddQuantity(Math.max(1, addQuantity - 1))}
-                    disabled={addQuantity <= 1}
-                  >
+                  <Button variant="outline" size="icon" className="min-h-[44px] min-w-[44px]" onClick={() => setAddQuantity(Math.max(1, addQuantity - 1))} disabled={addQuantity <= 1}>
                     <Minus className="h-4 w-4" />
                   </Button>
-                  <Input
-                    type="number"
-                    value={addQuantity}
-                    onChange={(e) => {
-                      const v = Math.max(1, Math.floor(Number(e.target.value)));
-                      setAddQuantity(v);
-                    }}
-                    min={1}
-                    step={1}
-                    className="min-h-[44px] text-center flex-1"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="min-h-[44px] min-w-[44px]"
-                    onClick={() => setAddQuantity(addQuantity + 1)}
-                  >
+                  <Input type="number" value={addQuantity} onChange={(e) => { const v = Math.max(1, Math.floor(Number(e.target.value))); setAddQuantity(v); }} min={1} step={1} className="min-h-[44px] text-center flex-1" />
+                  <Button variant="outline" size="icon" className="min-h-[44px] min-w-[44px]" onClick={() => setAddQuantity(addQuantity + 1)}>
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>

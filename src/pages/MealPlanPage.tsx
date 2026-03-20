@@ -1,7 +1,10 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { recipesApi } from "@/lib/api/recipesApi";
+import { mealPlanApi } from "@/lib/api/mealPlanApi";
+import { shoppingApi } from "@/lib/api/shoppingApi";
+import { qk } from "@/lib/api/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -12,72 +15,6 @@ import { format, startOfWeek, addWeeks, subWeeks } from "date-fns";
 import { da } from "date-fns/locale";
 
 const DAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
-
-function normalizeToBase(qty: number, unit: string): { value: number; type: "weight" | "volume" | "unknown" } {
-  const u = unit.toLowerCase().trim();
-  if (u === "kg") return { value: qty * 1000, type: "weight" };
-  if (u === "g") return { value: qty, type: "weight" };
-  if (u === "l") return { value: qty * 1000, type: "volume" };
-  if (u === "dl") return { value: qty * 100, type: "volume" };
-  if (u === "cl") return { value: qty * 10, type: "volume" };
-  if (u === "ml") return { value: qty, type: "volume" };
-  return { value: qty, type: "unknown" };
-}
-
-function convertToPackages(recipeQty: number, recipeUnit: string, productSizeLabel: string | null, productUnit: string | null): number {
-  if (!productSizeLabel || !productUnit) return recipeQty;
-  const sizeMatch = productSizeLabel.match(/(\d+(?:[.,]\d+)?)/);
-  if (!sizeMatch) return recipeQty;
-  const productSize = parseFloat(sizeMatch[1].replace(",", "."));
-  if (productSize <= 0) return recipeQty;
-  const recipe = normalizeToBase(recipeQty, recipeUnit);
-  const product = normalizeToBase(productSize, productUnit);
-  if (recipe.type === "unknown" || product.type === "unknown" || recipe.type !== product.type) {
-    return recipeQty;
-  }
-  return Math.ceil(recipe.value / product.value);
-}
-
-async function syncShoppingListForMealPlan(recipeId: string, mealPlanId: string, action: "add" | "remove") {
-  const { data: ingredients } = await supabase
-    .from("recipe_ingredients")
-    .select("*, products(name, category_id, unit, size_label, is_staple)")
-    .eq("recipe_id", recipeId);
-
-  if (!ingredients || ingredients.length === 0) return;
-
-  if (action === "add") {
-    for (const ing of ingredients) {
-      if (ing.is_staple || ing.products?.is_staple) continue;
-
-      const qty = convertToPackages(
-        ing.quantity,
-        ing.unit || "stk",
-        ing.products?.size_label || null,
-        ing.products?.unit || null
-      );
-
-      await supabase.from("shopping_list_items").insert({
-        product_name: ing.products?.name || ing.name || "Ukendt",
-        product_id: ing.product_id,
-        category_id: ing.products?.category_id || null,
-        quantity: qty,
-        unit: ing.products?.unit || ing.unit || "stk",
-        source_type: "recipe",
-        recipe_id: recipeId,
-        recipe_qty: ing.quantity,
-        recipe_unit: ing.unit || "stk",
-        meal_plan_id: mealPlanId,
-      });
-    }
-  } else {
-    await supabase
-      .from("shopping_list_items")
-      .delete()
-      .eq("meal_plan_id", mealPlanId)
-      .eq("is_ordered", false);
-  }
-}
 
 export default function MealPlanPage() {
   const queryClient = useQueryClient();
@@ -92,69 +29,32 @@ export default function MealPlanPage() {
   const weekStartStr = format(weekStart, "yyyy-MM-dd");
 
   const { data: mealPlans = [] } = useQuery({
-    queryKey: ["meal_plans", weekStartStr],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("meal_plans")
-        .select("*, recipes(*)")
-        .eq("week_start", weekStartStr)
-        .order("day_of_week");
-      return data || [];
-    },
+    queryKey: qk.mealPlans(weekStartStr),
+    queryFn: () => mealPlanApi.getByWeek(weekStartStr),
   });
 
   const { data: recipes = [] } = useQuery({
-    queryKey: ["recipes"],
-    queryFn: async () => {
-      const { data } = await supabase.from("recipes").select("*").order("title");
-      return data || [];
-    },
+    queryKey: qk.recipes,
+    queryFn: () => recipesApi.getAll(),
   });
 
   const { data: recipeCategories = [] } = useQuery({
-    queryKey: ["recipe_categories"],
-    queryFn: async () => {
-      const { data } = await supabase.from("recipe_categories").select("*").order("sort_order");
-      return data || [];
-    },
+    queryKey: qk.recipeCategories,
+    queryFn: () => recipesApi.getCategories(),
   });
 
   const CATEGORIES = useMemo(() => {
     return ["Alle", ...recipeCategories.map((c: any) => c.name)];
   }, [recipeCategories]);
 
-  // Fetch order status per meal_plan entry id in one query
   const mealPlanIds = useMemo(() => {
     return mealPlans.map((mp: any) => mp.id).filter(Boolean) as string[];
   }, [mealPlans]);
 
   const { data: mealPlanOrderStatus = {} } = useQuery({
-    queryKey: ["meal_plan_order_status", mealPlanIds],
+    queryKey: qk.mealPlanOrderStatus(mealPlanIds),
     enabled: mealPlanIds.length > 0,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("shopping_list_items")
-        .select("meal_plan_id, is_ordered, ordered_at")
-        .in("meal_plan_id", mealPlanIds);
-
-      if (!data) return {};
-
-      const statusMap: Record<string, { total: number; ordered: number; latestOrderedAt: string | null }> = {};
-      data.forEach((item: any) => {
-        if (!item.meal_plan_id) return;
-        if (!statusMap[item.meal_plan_id]) {
-          statusMap[item.meal_plan_id] = { total: 0, ordered: 0, latestOrderedAt: null };
-        }
-        statusMap[item.meal_plan_id].total++;
-        if (item.is_ordered) {
-          statusMap[item.meal_plan_id].ordered++;
-          if (!statusMap[item.meal_plan_id].latestOrderedAt || item.ordered_at > statusMap[item.meal_plan_id].latestOrderedAt!) {
-            statusMap[item.meal_plan_id].latestOrderedAt = item.ordered_at;
-          }
-        }
-      });
-      return statusMap;
-    },
+    queryFn: () => mealPlanApi.getOrderStatus(mealPlanIds),
   });
 
   const filteredRecipes = useMemo(() => {
@@ -171,35 +71,35 @@ export default function MealPlanPage() {
       const existing = mealPlans.find((mp: any) => mp.day_of_week === dayOfWeek);
 
       if (existing?.recipe_id && existing.recipe_id !== recipeId) {
-        await syncShoppingListForMealPlan(existing.recipe_id, existing.id, "remove");
+        await shoppingApi.syncMealPlan({ recipe_id: existing.recipe_id, meal_plan_id: existing.id, action: "remove" });
       }
 
       if (existing) {
         if (recipeId) {
-          await supabase.from("meal_plans").update({ recipe_id: recipeId }).eq("id", existing.id);
-          await syncShoppingListForMealPlan(recipeId, existing.id, "add");
+          await mealPlanApi.update(existing.id, { recipe_id: recipeId });
+          await shoppingApi.syncMealPlan({ recipe_id: recipeId, meal_plan_id: existing.id, action: "add" });
         } else {
-          await syncShoppingListForMealPlan(existing.recipe_id, existing.id, "remove");
-          await supabase.from("meal_plans").delete().eq("id", existing.id);
+          await shoppingApi.syncMealPlan({ recipe_id: existing.recipe_id, meal_plan_id: existing.id, action: "remove" });
+          await mealPlanApi.delete(existing.id);
         }
       } else if (recipeId) {
         const date = new Date(weekStart);
         date.setDate(date.getDate() + dayOfWeek);
-        const { data: newPlan } = await supabase.from("meal_plans").insert({
+        const newPlan = await mealPlanApi.set({
           day_of_week: dayOfWeek,
           recipe_id: recipeId,
           week_start: weekStartStr,
           plan_date: format(date, "yyyy-MM-dd"),
-        }).select().single();
+        });
 
         if (newPlan) {
-          await syncShoppingListForMealPlan(recipeId, newPlan.id, "add");
+          await shoppingApi.syncMealPlan({ recipe_id: recipeId, meal_plan_id: newPlan.id, action: "add" });
         }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meal_plans"] });
-      queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
+      queryClient.invalidateQueries({ queryKey: qk.shoppingListItems });
       queryClient.invalidateQueries({ queryKey: ["meal_plan_order_status"] });
     },
   });
@@ -209,23 +109,13 @@ export default function MealPlanPage() {
       const fromPlan = mealPlans.find((mp: any) => mp.day_of_week === fromDay);
       const toPlan = mealPlans.find((mp: any) => mp.day_of_week === toDay);
 
-      if (fromPlan && toPlan) {
-        // Swap day_of_week and plan_date, keep IDs stable
-        const fromDate = new Date(weekStart);
-        fromDate.setDate(fromDate.getDate() + fromDay);
-        const toDate = new Date(weekStart);
-        toDate.setDate(toDate.getDate() + toDay);
-        await supabase.from("meal_plans").update({ day_of_week: toDay, plan_date: format(toDate, "yyyy-MM-dd") }).eq("id", fromPlan.id);
-        await supabase.from("meal_plans").update({ day_of_week: fromDay, plan_date: format(fromDate, "yyyy-MM-dd") }).eq("id", toPlan.id);
-      } else if (fromPlan && !toPlan) {
-        // Move to empty day: only update date fields, keep same ID
-        const date = new Date(weekStart);
-        date.setDate(date.getDate() + toDay);
-        await supabase.from("meal_plans").update({
-          day_of_week: toDay,
-          plan_date: format(date, "yyyy-MM-dd"),
-        }).eq("id", fromPlan.id);
-      }
+      await mealPlanApi.swap({
+        from_id: fromPlan?.id,
+        to_id: toPlan?.id,
+        from_day: fromDay,
+        to_day: toDay,
+        week_start: weekStartStr,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meal_plans"] });
@@ -381,7 +271,6 @@ export default function MealPlanPage() {
         })}
       </div>
 
-      {/* Recipe selection dialog */}
       <Dialog open={selectingDay !== null} onOpenChange={() => setSelectingDay(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh]">
           <DialogHeader>
