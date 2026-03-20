@@ -9,22 +9,22 @@ import type {
 export const recipesApi = {
   // ── Recipe categories ──
   getCategories: () =>
-    api.get<RecipeCategory[]>("/api/recipe-categories"),
+    api.get<RecipeCategory[]>("/api/v1/recipes/categories"),
 
   createCategory: (cat: { name: string; sort_order: number }) =>
-    api.post<RecipeCategory>("/api/recipe-categories", cat),
+    api.post<RecipeCategory>("/api/v1/recipes/categories", cat),
 
   updateCategory: (id: string, data: Partial<RecipeCategory>) =>
-    api.patch<RecipeCategory>(`/api/recipe-categories/${id}`, data),
+    api.put<RecipeCategory>(`/api/v1/recipes/categories/${id}`, data),
 
   deleteCategory: (id: string, reassignCategory?: string | null) =>
-    api.delete(`/api/recipe-categories/${id}`, {
+    api.delete(`/api/v1/recipes/categories/${id}`, {
       params: { reassign_to: reassignCategory ?? undefined },
     }),
 
   // ── Recipes ──
   getAll: () =>
-    api.get<Recipe[]>("/api/recipes"),
+    api.get<Recipe[]>("/api/v1/recipes/items"),
 
   getPaginated: (params: {
     search?: string;
@@ -32,25 +32,28 @@ export const recipesApi = {
     page?: number;
     page_size?: number;
   }) =>
-    api.get<PaginatedResponse<Recipe>>("/api/recipes", {
+    api.get<PaginatedResponse<Recipe>>("/api/v1/recipes/items", {
       params: params as Record<string, string | number>,
     }),
 
   getById: (id: string) =>
-    api.get<Recipe>(`/api/recipes/${id}`),
+    api.get<Recipe>(`/api/v1/recipes/items/${id}`),
+
+  getFull: (id: string) =>
+    api.get<Recipe & { ingredients: RecipeIngredient[] }>(`/api/v1/recipes/items/${id}/full`),
 
   create: (recipe: Partial<Recipe>) =>
-    api.post<Recipe>("/api/recipes", recipe),
+    api.post<Recipe>("/api/v1/recipes/items", recipe),
 
   update: (id: string, data: Partial<Recipe>) =>
-    api.patch<Recipe>(`/api/recipes/${id}`, data),
+    api.put<Recipe>(`/api/v1/recipes/items/${id}`, data),
 
   delete: (id: string) =>
-    api.delete(`/api/recipes/${id}`),
+    api.delete(`/api/v1/recipes/items/${id}`),
 
   // ── Recipe ingredients ──
   getIngredients: (recipeId: string) =>
-    api.get<RecipeIngredient[]>(`/api/recipes/${recipeId}/ingredients`),
+    api.get<RecipeIngredient[]>(`/api/v1/recipes/items/${recipeId}/ingredients`),
 
   saveIngredients: (
     recipeId: string,
@@ -64,5 +67,5 @@ export const recipesApi = {
       _deleted?: boolean;
     }>
   ) =>
-    api.put(`/api/recipes/${recipeId}/ingredients`, { ingredients }),
+    api.put(`/api/v1/recipes/items/${recipeId}/ingredients`, { ingredients }),
 };
