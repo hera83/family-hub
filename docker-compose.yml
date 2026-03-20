@@ -1,0 +1,13 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_FAMILYHUB_API_BASE_URL: ${VITE_FAMILYHUB_API_BASE_URL}
+        VITE_FAMILYHUB_API_KEY: ${VITE_FAMILYHUB_API_KEY}
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    env_file:
+      - .env.docker
