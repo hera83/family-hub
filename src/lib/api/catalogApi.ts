@@ -4,30 +4,30 @@ import type { Product, ItemCategory } from "./types";
 export const catalogApi = {
   // ── Item categories ──
   getItemCategories: () =>
-    api.get<ItemCategory[]>("/api/item-categories"),
+    api.get<ItemCategory[]>("/api/v1/catalog/categories"),
 
   createItemCategory: (cat: { name: string; sort_order: number }) =>
-    api.post<ItemCategory>("/api/item-categories", cat),
+    api.post<ItemCategory>("/api/v1/catalog/categories", cat),
 
   updateItemCategory: (id: string, data: Partial<ItemCategory>) =>
-    api.patch<ItemCategory>(`/api/item-categories/${id}`, data),
+    api.put<ItemCategory>(`/api/v1/catalog/categories/${id}`, data),
 
   deleteItemCategory: (id: string) =>
-    api.delete(`/api/item-categories/${id}`),
+    api.delete(`/api/v1/catalog/categories/${id}`),
 
   // ── Products ──
   getProducts: () =>
-    api.get<Product[]>("/api/products"),
+    api.get<Product[]>("/api/v1/catalog/products"),
 
   createProduct: (product: Partial<Product>) =>
-    api.post<Product>("/api/products", product),
+    api.post<Product>("/api/v1/catalog/products", product),
 
   updateProduct: (id: string, data: Partial<Product>) =>
-    api.patch<Product>(`/api/products/${id}`, data),
+    api.put<Product>(`/api/v1/catalog/products/${id}`, data),
 
   deleteProduct: (id: string) =>
-    api.delete(`/api/products/${id}`),
+    api.delete(`/api/v1/catalog/products/${id}`),
 
   getTopProducts: () =>
-    api.get<string[]>("/api/products/top"),
+    api.get<string[]>("/api/v1/catalog/products/top"),
 };
