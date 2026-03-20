@@ -2,7 +2,6 @@ import { env } from "@/config/env";
 
 /**
  * Upload an image file to the API and return a public URL.
- * Falls back to Supabase storage if the API doesn't support uploads.
  */
 export const imageApi = {
   upload: async (file: File, folder: string = "uploads"): Promise<string> => {
