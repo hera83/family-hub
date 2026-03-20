@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
-import { imageApi } from "@/lib/api/imageApi";
+import { isFeatureActive } from "@/config/capabilities";
 import { Button } from "@/components/ui/button";
-import { Upload, X } from "lucide-react";
+import { Upload, X, AlertCircle } from "lucide-react";
 
 interface ImageUploadProps {
   value: string | null;
@@ -12,10 +12,13 @@ interface ImageUploadProps {
 export function ImageUpload({ value, onChange, folder = "uploads" }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploadEnabled = isFeatureActive("imageUpload");
 
   const upload = async (file: File) => {
+    if (!uploadEnabled) return;
     setUploading(true);
     try {
+      const { imageApi } = await import("@/lib/api/imageApi");
       const url = await imageApi.upload(file, folder);
       onChange(url);
     } catch (err) {
@@ -40,7 +43,7 @@ export function ImageUpload({ value, onChange, folder = "uploads" }: ImageUpload
             <X className="h-3 w-3" />
           </Button>
         </div>
-      ) : (
+      ) : uploadEnabled ? (
         <Button
           type="button"
           variant="outline"
@@ -51,6 +54,11 @@ export function ImageUpload({ value, onChange, folder = "uploads" }: ImageUpload
           <Upload className="h-4 w-4" />
           {uploading ? "Uploader..." : "Upload billede"}
         </Button>
+      ) : (
+        <div className="flex items-center gap-2 p-3 rounded-md border border-dashed text-muted-foreground text-sm">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Billedupload afventer API-understøttelse</span>
+        </div>
       )}
       <input
         ref={fileRef}
