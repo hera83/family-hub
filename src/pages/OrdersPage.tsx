@@ -67,13 +67,9 @@ export default function OrdersPage() {
                       : "—"}
                   </td>
                   <td className="p-3">
-                    {order.pdf_data ? (
-                      <Button variant="outline" size="sm" onClick={() => openPdf(order.pdf_data)} className="gap-1 min-h-[36px]">
-                        <FileText className="h-4 w-4" /> PDF
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Ingen PDF</span>
-                    )}
+                    <Button variant="outline" size="sm" onClick={() => openPdf(order.id)} className="gap-1 min-h-[36px]">
+                      <FileText className="h-4 w-4" /> PDF
+                    </Button>
                   </td>
                   <td className="p-3">
                     <Button size="icon" variant="ghost" onClick={() => deleteOrder.mutate(order.id)} className="min-h-[36px] min-w-[36px] text-destructive">
