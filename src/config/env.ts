@@ -14,16 +14,9 @@ function requireEnv(key: string): string {
   return value;
 }
 
-function optionalEnv(key: string, fallback: string): string {
-  return import.meta.env[key] || fallback;
-}
-
 export const env = {
   /** Base URL for FamilyHub REST API, e.g. https://hub.ramskov.pro */
   apiBaseUrl: requireEnv("VITE_FAMILYHUB_API_BASE_URL"),
   /** API key sent as x-api-key header */
   apiKey: requireEnv("VITE_FAMILYHUB_API_KEY"),
-  /** Supabase URL – kept for storage / auth if still needed */
-  supabaseUrl: optionalEnv("VITE_SUPABASE_URL", ""),
-  supabaseAnonKey: optionalEnv("VITE_SUPABASE_PUBLISHABLE_KEY", ""),
 } as const;
