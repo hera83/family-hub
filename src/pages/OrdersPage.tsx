@@ -28,8 +28,13 @@ export default function OrdersPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.orders }),
   });
 
-  const openPdf = (base64: string) => {
-    setPdfData(base64);
+  const openPdf = async (orderId: string) => {
+    try {
+      const res = await ordersApi.getPdf(orderId);
+      setPdfData(res.pdf_data);
+    } catch {
+      setPdfData(null);
+    }
   };
 
   return (

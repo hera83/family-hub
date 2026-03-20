@@ -1,12 +1,15 @@
 import { api } from "./client";
-import type { Order, OrderLine } from "./types";
+import type { Order } from "./types";
 
 export const ordersApi = {
   getAll: () =>
-    api.get<Order[]>("/api/orders"),
+    api.get<Order[]>("/api/v1/orders"),
 
   getById: (id: string) =>
-    api.get<Order>(`/api/orders/${id}`),
+    api.get<Order>(`/api/v1/orders/${id}`),
+
+  getPdf: (id: string) =>
+    api.get<{ pdf_data: string }>(`/api/v1/orders/${id}/pdf`),
 
   create: (order: {
     status: string;
@@ -22,8 +25,8 @@ export const ordersApi = {
       size_label: string | null;
     }>;
   }) =>
-    api.post<Order>("/api/orders", order),
+    api.post<Order>("/api/v1/orders", order),
 
   delete: (id: string) =>
-    api.delete(`/api/orders/${id}`),
+    api.delete(`/api/v1/orders/${id}`),
 };
