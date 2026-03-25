@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { recipesApi } from "@/lib/api/recipesApi";
-import { qk } from "@/lib/api/queryKeys";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,15 +17,29 @@ export default function CookRecipePage() {
   const supportsTTS = typeof window !== "undefined" && "speechSynthesis" in window;
 
   const { data: recipe, isLoading } = useQuery({
-    queryKey: qk.cookRecipe(recipeId!),
+    queryKey: ["cook_recipe", recipeId],
     enabled: !!recipeId,
-    queryFn: () => recipesApi.getById(recipeId!),
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("recipes")
+        .select("*")
+        .eq("id", recipeId!)
+        .single();
+      return data;
+    },
   });
 
   const { data: ingredients = [] } = useQuery({
-    queryKey: qk.cookIngredients(recipeId!),
+    queryKey: ["cook_ingredients", recipeId],
     enabled: !!recipeId,
-    queryFn: () => recipesApi.getIngredients(recipeId!),
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("recipe_ingredients")
+        .select("*, products(name)")
+        .eq("recipe_id", recipeId!)
+        .order("created_at");
+      return data || [];
+    },
   });
 
   const toggleIngredient = (id: string) => {
@@ -46,6 +59,7 @@ export default function CookRecipePage() {
       .filter((s: string) => s.length > 0);
   }, [recipe?.instructions]);
 
+  // TTS
   const startSpeaking = () => {
     if (!supportsTTS || !recipe) return;
     window.speechSynthesis.cancel();
@@ -69,6 +83,7 @@ export default function CookRecipePage() {
     const utterance = new SpeechSynthesisUtterance(parts.join(" "));
     utterance.lang = "da-DK";
 
+    // Try to find a Danish voice
     const voices = window.speechSynthesis.getVoices();
     const daVoice = voices.find((v) => v.lang.startsWith("da"));
     if (daVoice) utterance.voice = daVoice;
@@ -86,8 +101,11 @@ export default function CookRecipePage() {
     setIsSpeaking(false);
   };
 
+  // Cleanup on unmount
   useEffect(() => {
-    return () => { window.speechSynthesis.cancel(); };
+    return () => {
+      window.speechSynthesis.cancel();
+    };
   }, []);
 
   if (isLoading) {
@@ -112,13 +130,18 @@ export default function CookRecipePage() {
 
   return (
     <div className="cook-recipe-page max-w-3xl mx-auto space-y-6 pb-8">
+      {/* Action bar – hidden in print */}
       <div className="flex items-center justify-between gap-2 print:hidden">
         <Button variant="outline" onClick={() => navigate("/madplan")} className="min-h-[44px] gap-2">
           <ArrowLeft className="h-4 w-4" /> Madplan
         </Button>
         <div className="flex items-center gap-2">
           {supportsTTS && (
-            <Button variant="outline" onClick={isSpeaking ? stopSpeaking : startSpeaking} className="min-h-[44px] gap-2">
+            <Button
+              variant="outline"
+              onClick={isSpeaking ? stopSpeaking : startSpeaking}
+              className="min-h-[44px] gap-2"
+            >
               {isSpeaking ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
               {isSpeaking ? "Stop" : "Oplæs"}
             </Button>
@@ -129,8 +152,13 @@ export default function CookRecipePage() {
         </div>
       </div>
 
+      {/* Header */}
       {recipe.image_url && (
-        <img src={recipe.image_url} alt={recipe.title} className="w-full h-56 sm:h-72 object-cover rounded-lg" />
+        <img
+          src={recipe.image_url}
+          alt={recipe.title}
+          className="w-full h-56 sm:h-72 object-cover rounded-lg"
+        />
       )}
 
       <div className="space-y-2">
@@ -138,11 +166,14 @@ export default function CookRecipePage() {
         <div className="flex flex-wrap gap-2">
           {recipe.category && <Badge variant="secondary">{recipe.category}</Badge>}
           {recipe.prep_time && <Badge variant="outline">🍳 {recipe.prep_time} min</Badge>}
-          {(recipe.wait_time ?? 0) > 0 && <Badge variant="outline">⏳ {recipe.wait_time} min</Badge>}
+          {recipe.wait_time > 0 && <Badge variant="outline">⏳ {recipe.wait_time} min</Badge>}
         </div>
-        {recipe.description && <p className="text-muted-foreground">{recipe.description}</p>}
+        {recipe.description && (
+          <p className="text-muted-foreground">{recipe.description}</p>
+        )}
       </div>
 
+      {/* Ingredients */}
       {ingredients.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-xl font-semibold">Ingredienser</h2>
@@ -158,7 +189,11 @@ export default function CookRecipePage() {
                   }`}
                   onClick={() => toggleIngredient(ing.id)}
                 >
-                  <Checkbox checked={checked} onCheckedChange={() => toggleIngredient(ing.id)} className="h-5 w-5 print:hidden" />
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={() => toggleIngredient(ing.id)}
+                    className="h-5 w-5 print:hidden"
+                  />
                   <span className="text-base">
                     <strong>{ing.quantity} {ing.unit || "stk"}</strong> {name}
                     {ing.is_staple && <span className="ml-2 text-xs text-muted-foreground">(basis)</span>}
@@ -170,6 +205,7 @@ export default function CookRecipePage() {
         </section>
       )}
 
+      {/* Instructions */}
       {instructionSteps.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-xl font-semibold">Fremgangsmåde</h2>

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ordersApi } from "@/lib/api/ordersApi";
-import { qk } from "@/lib/api/queryKeys";
+import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Package, FileText, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
@@ -15,8 +14,11 @@ export default function OrdersPage() {
   const PAGE_SIZE = 10;
 
   const { data: ordersData } = useQuery({
-    queryKey: qk.orders,
-    queryFn: () => ordersApi.getAll(),
+    queryKey: ["orders"],
+    queryFn: async () => {
+      const { data } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+      return data || [];
+    },
   });
 
   const orders = ordersData || [];
@@ -24,17 +26,15 @@ export default function OrdersPage() {
   const pagedOrders = orders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const deleteOrder = useMutation({
-    mutationFn: (id: string) => ordersApi.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.orders }),
+    mutationFn: async (id: string) => {
+      await supabase.from("order_lines").delete().eq("order_id", id);
+      await supabase.from("orders").delete().eq("id", id);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
   });
 
-  const openPdf = async (orderId: string) => {
-    try {
-      const res = await ordersApi.getPdf(orderId);
-      setPdfData(res.pdf_data);
-    } catch {
-      setPdfData(null);
-    }
+  const openPdf = (base64: string) => {
+    setPdfData(base64);
   };
 
   return (
@@ -67,9 +67,13 @@ export default function OrdersPage() {
                       : "—"}
                   </td>
                   <td className="p-3">
-                    <Button variant="outline" size="sm" onClick={() => openPdf(order.id)} className="gap-1 min-h-[36px]">
-                      <FileText className="h-4 w-4" /> PDF
-                    </Button>
+                    {order.pdf_data ? (
+                      <Button variant="outline" size="sm" onClick={() => openPdf(order.pdf_data)} className="gap-1 min-h-[36px]">
+                        <FileText className="h-4 w-4" /> PDF
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Ingen PDF</span>
+                    )}
                   </td>
                   <td className="p-3">
                     <Button size="icon" variant="ghost" onClick={() => deleteOrder.mutate(order.id)} className="min-h-[36px] min-w-[36px] text-destructive">

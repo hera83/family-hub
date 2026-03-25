@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { calendarApi } from "@/lib/api/calendarApi";
-import { qk } from "@/lib/api/queryKeys";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -25,6 +24,7 @@ import {
   getDay,
   getDate,
   getMonth,
+  getDayOfYear,
   isBefore,
   parseISO,
 } from "date-fns";
@@ -89,8 +89,11 @@ export default function CalendarPage() {
   });
 
   const { data: members = [] } = useQuery({
-    queryKey: qk.familyMembers,
-    queryFn: () => calendarApi.getMembers(),
+    queryKey: ["family_members"],
+    queryFn: async () => {
+      const { data } = await supabase.from("family_members").select("*").order("created_at");
+      return data || [];
+    },
   });
 
   const dateRange = useMemo(() => {
@@ -107,36 +110,51 @@ export default function CalendarPage() {
   }, [currentDate, viewMode]);
 
   const { data: normalEvents = [] } = useQuery({
-    queryKey: qk.calendarEvents(dateRange.start.toISOString(), dateRange.end.toISOString()),
-    queryFn: () => {
+    queryKey: ["calendar_events", dateRange.start.toISOString(), dateRange.end.toISOString()],
+    queryFn: async () => {
       const startStr = format(dateRange.days[0], "yyyy-MM-dd");
       const endStr = format(dateRange.days[dateRange.days.length - 1], "yyyy-MM-dd");
-      return calendarApi.getEvents({ start: startStr, end: endStr, recurring: false });
+      const { data } = await supabase
+        .from("calendar_events")
+        .select("*, family_members(name, color)")
+        .is("recurrence_type", null)
+        .gte("event_date", startStr)
+        .lte("event_date", endStr)
+        .order("start_time");
+      return data || [];
     },
   });
 
   const { data: recurringEvents = [] } = useQuery({
-    queryKey: qk.recurringEvents(dateRange.days[dateRange.days.length - 1].toISOString()),
-    queryFn: () => {
+    queryKey: ["recurring_events", dateRange.days[dateRange.days.length - 1].toISOString()],
+    queryFn: async () => {
       const endStr = format(dateRange.days[dateRange.days.length - 1], "yyyy-MM-dd");
-      return calendarApi.getRecurringEvents(endStr);
+      const { data } = await supabase
+        .from("calendar_events")
+        .select("*, family_members(name, color)")
+        .not("recurrence_type", "is", null)
+        .lte("event_date", endStr)
+        .order("start_time");
+      return data || [];
     },
   });
 
   const addMember = useMutation({
-    mutationFn: (member: { name: string; color: string }) =>
-      calendarApi.createMember(member),
+    mutationFn: async (member: { name: string; color: string }) => {
+      await supabase.from("family_members").insert(member);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: qk.familyMembers });
+      queryClient.invalidateQueries({ queryKey: ["family_members"] });
       setNewMember({ name: "", color: MUTED_COLORS[members.length % MUTED_COLORS.length] });
     },
   });
 
   const updateMember = useMutation({
-    mutationFn: ({ id, ...data }: any) =>
-      calendarApi.updateMember(id, data),
+    mutationFn: async ({ id, ...data }: any) => {
+      await supabase.from("family_members").update(data).eq("id", id);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: qk.familyMembers });
+      queryClient.invalidateQueries({ queryKey: ["family_members"] });
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
       queryClient.invalidateQueries({ queryKey: ["recurring_events"] });
       setEditingMember(null);
@@ -144,21 +162,23 @@ export default function CalendarPage() {
   });
 
   const deleteMember = useMutation({
-    mutationFn: (id: string) => calendarApi.deleteMember(id),
+    mutationFn: async (id: string) => {
+      await supabase.from("family_members").delete().eq("id", id);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: qk.familyMembers });
+      queryClient.invalidateQueries({ queryKey: ["family_members"] });
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
       queryClient.invalidateQueries({ queryKey: ["recurring_events"] });
     },
   });
 
   const addEvent = useMutation({
-    mutationFn: (event: any) => {
+    mutationFn: async (event: any) => {
       if (event.id) {
-        const { id, ...rest } = event;
-        return calendarApi.updateEvent(id, rest);
+        await supabase.from("calendar_events").update(event).eq("id", event.id);
+      } else {
+        await supabase.from("calendar_events").insert(event);
       }
-      return calendarApi.createEvent(event);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
@@ -170,7 +190,9 @@ export default function CalendarPage() {
   });
 
   const deleteEvent = useMutation({
-    mutationFn: (id: string) => calendarApi.deleteEvent(id),
+    mutationFn: async (id: string) => {
+      await supabase.from("calendar_events").delete().eq("id", id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
       queryClient.invalidateQueries({ queryKey: ["recurring_events"] });
@@ -256,7 +278,7 @@ export default function CalendarPage() {
     }));
   };
 
-  // Build week activity table data
+  // Build week activity table data: group all events by member for the week
   const weekActivityData = useMemo(() => {
     if (viewMode !== "week") return [];
     const memberMap: Record<string, { memberId: string; name: string; color: string; activities: { day: Date; events: any[] }[] }> = {};
@@ -278,6 +300,7 @@ export default function CalendarPage() {
       });
     });
 
+    // Only include members that have at least one event
     return Object.values(memberMap).filter(m => m.activities.some(a => a.events.length > 0));
   }, [viewMode, dateRange.days, normalEvents, recurringEvents, members]);
 
@@ -388,7 +411,7 @@ export default function CalendarPage() {
         })}
       </div>
 
-      {/* Week activity table */}
+      {/* Week activity table - only in week view */}
       {viewMode === "week" && weekActivityData.length > 0 && (
         <div className="border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">

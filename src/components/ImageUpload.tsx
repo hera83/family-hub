@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
-import { isFeatureActive } from "@/config/capabilities";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Upload, X, AlertCircle } from "lucide-react";
+import { Upload, X } from "lucide-react";
 
 interface ImageUploadProps {
   value: string | null;
@@ -12,15 +12,16 @@ interface ImageUploadProps {
 export function ImageUpload({ value, onChange, folder = "uploads" }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const uploadEnabled = isFeatureActive("imageUpload");
 
   const upload = async (file: File) => {
-    if (!uploadEnabled) return;
     setUploading(true);
     try {
-      const { imageApi } = await import("@/lib/api/imageApi");
-      const url = await imageApi.upload(file, folder);
-      onChange(url);
+      const ext = file.name.split(".").pop();
+      const path = `${folder}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("images").upload(path, file);
+      if (error) throw error;
+      const { data } = supabase.storage.from("images").getPublicUrl(path);
+      onChange(data.publicUrl);
     } catch (err) {
       console.error("Upload error:", err);
     } finally {
@@ -43,7 +44,7 @@ export function ImageUpload({ value, onChange, folder = "uploads" }: ImageUpload
             <X className="h-3 w-3" />
           </Button>
         </div>
-      ) : uploadEnabled ? (
+      ) : (
         <Button
           type="button"
           variant="outline"
@@ -54,11 +55,6 @@ export function ImageUpload({ value, onChange, folder = "uploads" }: ImageUpload
           <Upload className="h-4 w-4" />
           {uploading ? "Uploader..." : "Upload billede"}
         </Button>
-      ) : (
-        <div className="flex items-center gap-2 p-3 rounded-md border border-dashed text-muted-foreground text-sm">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>Billedupload afventer API-understøttelse</span>
-        </div>
       )}
       <input
         ref={fileRef}

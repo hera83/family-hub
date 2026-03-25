@@ -1,8 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { recipesApi } from "@/lib/api/recipesApi";
-import { catalogApi } from "@/lib/api/catalogApi";
-import { qk } from "@/lib/api/queryKeys";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -51,33 +49,42 @@ export default function RecipesPage() {
   const [editingCategory, setEditingCategory] = useState<{ id: string; value: string } | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<{ id: string; name: string } | null>(null);
 
+  // Ingredients state
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [showProductSearch, setShowProductSearch] = useState(false);
 
+  // Categories from DB
   const { data: dbCategories = [] } = useQuery({
-    queryKey: qk.recipeCategories,
-    queryFn: () => recipesApi.getCategories(),
+    queryKey: ["recipe_categories"],
+    queryFn: async () => {
+      const { data } = await supabase.from("recipe_categories").select("*").order("sort_order");
+      return data || [];
+    },
   });
 
   const categories = useMemo(() => {
     return ["Alle", ...dbCategories.map((c: any) => c.name)];
   }, [dbCategories]);
 
+
   const { data: recipesData } = useQuery({
-    queryKey: qk.recipesPaginated(searchQuery, categoryFilter, page),
-    queryFn: () =>
-      recipesApi.getPaginated({
-        search: searchQuery || undefined,
-        category: categoryFilter !== "Alle" ? categoryFilter : undefined,
-        page,
-        page_size: PAGE_SIZE,
-      }),
+    queryKey: ["recipes_paginated", searchQuery, categoryFilter, page],
+    queryFn: async () => {
+      let query = supabase.from("recipes").select("*", { count: "exact" });
+      if (categoryFilter !== "Alle") query = query.eq("category", categoryFilter);
+      if (searchQuery) query = query.ilike("title", `%${searchQuery}%`);
+      const { data, count } = await query.order("created_at", { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+      return { recipes: data || [], total: count || 0 };
+    },
   });
 
   const { data: products = [] } = useQuery({
-    queryKey: qk.products,
-    queryFn: () => catalogApi.getProducts(),
+    queryKey: ["products"],
+    queryFn: async () => {
+      const { data } = await supabase.from("products").select("*, item_categories(name)").order("name");
+      return data || [];
+    },
   });
 
   const filteredProducts = useMemo(() => {
@@ -87,25 +94,29 @@ export default function RecipesPage() {
 
   useEffect(() => {
     if (showEditor && editingRecipe?.id) {
-      recipesApi.getIngredients(editingRecipe.id).then((data) => {
+      supabase
+        .from("recipe_ingredients")
+        .select("*, products(name)")
+        .eq("recipe_id", editingRecipe.id)
+        .then(({ data }) => {
         setIngredients(
-          (data || []).map((ing: any) => ({
-            id: ing.id,
-            client_id: nextClientId(),
-            product_id: ing.product_id,
-            product_name: ing.products?.name || ing.name || "",
-            quantity: ing.quantity,
-            unit: ing.unit || "stk",
-            is_staple: ing.is_staple || false,
-          }))
-        );
-      });
+            (data || []).map((ing: any) => ({
+              id: ing.id,
+              client_id: nextClientId(),
+              product_id: ing.product_id,
+              product_name: ing.products?.name || ing.name || "",
+              quantity: ing.quantity,
+              unit: ing.unit || "stk",
+              is_staple: ing.is_staple || false,
+            }))
+          );
+        });
     } else if (showEditor && !editingRecipe) {
       setIngredients([]);
     }
   }, [showEditor, editingRecipe]);
 
-  const recipes = recipesData?.data || [];
+  const recipes = recipesData?.recipes || [];
   const totalPages = Math.ceil((recipesData?.total || 0) / PAGE_SIZE);
 
   const isNew = (createdAt: string) => {
@@ -119,47 +130,70 @@ export default function RecipesPage() {
       let recipeId: string;
       if (data.id) {
         const { id, ...rest } = data;
-        await recipesApi.update(id, rest);
+        await supabase.from("recipes").update(rest).eq("id", id);
         recipeId = id;
       } else {
-        const inserted = await recipesApi.create(data);
-        recipeId = inserted.id;
+        const { data: inserted } = await supabase.from("recipes").insert(data).select("id").single();
+        recipeId = inserted!.id;
       }
 
-      await recipesApi.saveIngredients(
-        recipeId,
-        ingredients.map((ing) => ({
-          id: ing.id,
+      const existing = ingredients.filter((i) => i.id && !i._deleted);
+      const toDelete = ingredients.filter((i) => i.id && i._deleted);
+      const toInsert = ingredients.filter((i) => !i.id && !i._deleted);
+
+      if (toDelete.length > 0) {
+        await supabase.from("recipe_ingredients").delete().in("id", toDelete.map((i) => i.id!));
+      }
+
+      for (const ing of existing) {
+        await supabase.from("recipe_ingredients").update({
           product_id: ing.product_id,
           name: ing.product_name,
           quantity: Number(ing.quantity) || 1,
           unit: ing.unit,
           is_staple: ing.is_staple,
-          _deleted: ing._deleted,
-        }))
-      );
+        }).eq("id", ing.id!);
+      }
+
+      if (toInsert.length > 0) {
+        await supabase.from("recipe_ingredients").insert(
+          toInsert.map((ing) => ({
+            recipe_id: recipeId,
+            product_id: ing.product_id,
+            name: ing.product_name,
+            quantity: Number(ing.quantity) || 1,
+            unit: ing.unit,
+            is_staple: ing.is_staple,
+          }))
+        );
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
-      queryClient.invalidateQueries({ queryKey: qk.recipes });
+      queryClient.invalidateQueries({ queryKey: ["recipes"] });
       setShowEditor(false);
     },
   });
 
   const deleteRecipe = useMutation({
-    mutationFn: (id: string) => recipesApi.delete(id),
+    mutationFn: async (id: string) => {
+      await supabase.from("recipe_ingredients").delete().eq("recipe_id", id);
+      await supabase.from("recipes").delete().eq("id", id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
-      queryClient.invalidateQueries({ queryKey: qk.recipes });
+      queryClient.invalidateQueries({ queryKey: ["recipes"] });
+      
     },
   });
 
   const toggleFavorite = useMutation({
-    mutationFn: ({ id, is_favorite }: { id: string; is_favorite: boolean }) =>
-      recipesApi.update(id, { is_favorite }),
+    mutationFn: async ({ id, is_favorite }: { id: string; is_favorite: boolean }) => {
+      await supabase.from("recipes").update({ is_favorite }).eq("id", id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
-      queryClient.invalidateQueries({ queryKey: qk.recipes });
+      queryClient.invalidateQueries({ queryKey: ["recipes"] });
     },
   });
 
@@ -182,7 +216,10 @@ export default function RecipesPage() {
   };
 
   const cloneRecipe = async (recipe: any) => {
-    const srcIngredients = await recipesApi.getIngredients(recipe.id);
+    const { data: srcIngredients } = await supabase
+      .from("recipe_ingredients")
+      .select("*, products(name)")
+      .eq("recipe_id", recipe.id);
 
     setEditingRecipe(null);
     setFormData({
@@ -228,7 +265,11 @@ export default function RecipesPage() {
     setIngredients((prev) => {
       const ing = prev[index];
       if (!ing) return prev;
-      if (!ing.id) return prev.filter((_, i) => i !== index);
+      if (!ing.id) {
+        // New ingredient – remove from state entirely
+        return prev.filter((_, i) => i !== index);
+      }
+      // Existing in DB – mark deleted
       return prev.map((item, i) => i === index ? { ...item, _deleted: true } : item);
     });
   };
@@ -249,6 +290,7 @@ export default function RecipesPage() {
         </div>
       </div>
 
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -259,6 +301,7 @@ export default function RecipesPage() {
         />
       </div>
 
+      {/* Category filters */}
       <div className="flex flex-wrap gap-2">
         {categories.map((cat) => (
           <Button key={cat} variant={categoryFilter === cat ? "default" : "outline"} size="sm" onClick={() => { setCategoryFilter(cat); setPage(1); }} className="min-h-[36px]">
@@ -267,6 +310,7 @@ export default function RecipesPage() {
         ))}
       </div>
 
+      {/* Recipe grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {recipes.map((recipe: any) => (
           <div key={recipe.id} className="border rounded-lg overflow-hidden bg-card hover:shadow-md transition-shadow">
@@ -315,6 +359,7 @@ export default function RecipesPage() {
         </div>
       )}
 
+      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-4 pt-4">
           <Button variant="outline" size="icon" disabled={page <= 1} onClick={() => setPage(page - 1)} className="min-h-[44px] min-w-[44px]">
@@ -343,8 +388,9 @@ export default function RecipesPage() {
                     />
                     <Button size="sm" onClick={async () => {
                       if (editingCategory.value && editingCategory.value !== cat.name) {
-                        await recipesApi.updateCategory(cat.id, { name: editingCategory.value });
-                        queryClient.invalidateQueries({ queryKey: qk.recipeCategories });
+                        await supabase.from("recipe_categories").update({ name: editingCategory.value }).eq("id", cat.id);
+                        await supabase.from("recipes").update({ category: editingCategory.value }).eq("category", cat.name);
+                        queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
                         queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
                       }
                       setEditingCategory(null);
@@ -371,8 +417,8 @@ export default function RecipesPage() {
                 onClick={async () => {
                   if (newCategory.trim()) {
                     const maxOrder = dbCategories.length > 0 ? Math.max(...dbCategories.map((c: any) => c.sort_order)) : 0;
-                    await recipesApi.createCategory({ name: newCategory.trim(), sort_order: maxOrder + 1 });
-                    queryClient.invalidateQueries({ queryKey: qk.recipeCategories });
+                    await supabase.from("recipe_categories").insert({ name: newCategory.trim(), sort_order: maxOrder + 1 });
+                    queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
                     setNewCategory("");
                   }
                 }}
@@ -399,8 +445,9 @@ export default function RecipesPage() {
             <AlertDialogCancel className="min-h-[44px]">Annuller</AlertDialogCancel>
             <AlertDialogAction className="min-h-[44px]" onClick={async () => {
               if (!deletingCategory) return;
-              await recipesApi.deleteCategory(deletingCategory.id);
-              queryClient.invalidateQueries({ queryKey: qk.recipeCategories });
+              await supabase.from("recipes").update({ category: null }).eq("category", deletingCategory.name);
+              await supabase.from("recipe_categories").delete().eq("id", deletingCategory.id);
+              queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
               queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
               setDeletingCategory(null);
             }}>Slet</AlertDialogAction>
@@ -413,6 +460,7 @@ export default function RecipesPage() {
           <DialogHeader><DialogTitle>{editingRecipe ? "Rediger opskrift" : "Ny opskrift"}</DialogTitle></DialogHeader>
 
           {showProductSearch ? (
+            /* Inline product search - replaces dialog content temporarily */
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setShowProductSearch(false)} className="min-h-[36px] gap-1 shrink-0">
@@ -449,6 +497,7 @@ export default function RecipesPage() {
               </div>
             </div>
           ) : (
+            /* Normal recipe editor form */
             <>
               <div className="space-y-3">
                 <div><Label>Titel</Label><Input value={formData.title} onChange={(e) => updateField("title", e.target.value)} className="min-h-[44px]" /></div>
@@ -460,7 +509,7 @@ export default function RecipesPage() {
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div><Label>Køkkentid (min)</Label><Input type="number" value={formData.prep_time} onChange={(e) => updateField("prep_time", e.target.value === "" ? "" : e.target.value)} onBlur={() => updateField("prep_time", formData.prep_time === "" ? 0 : Number(formData.prep_time))} className="min-h-[44px]" /></div>
+              <div><Label>Køkkentid (min)</Label><Input type="number" value={formData.prep_time} onChange={(e) => updateField("prep_time", e.target.value === "" ? "" : e.target.value)} onBlur={() => updateField("prep_time", formData.prep_time === "" ? 0 : Number(formData.prep_time))} className="min-h-[44px]" /></div>
                   <div><Label>Ventetid (min)</Label><Input type="number" value={formData.wait_time} onChange={(e) => updateField("wait_time", e.target.value === "" ? "" : e.target.value)} onBlur={() => updateField("wait_time", formData.wait_time === "" ? 0 : Number(formData.wait_time))} className="min-h-[44px]" /></div>
                 </div>
                 <div>
@@ -472,6 +521,7 @@ export default function RecipesPage() {
                   />
                 </div>
 
+                {/* Ingredients section */}
                 <div className="space-y-2 pt-2 border-t">
                   <div className="flex items-center justify-between">
                     <Label className="text-base font-semibold">Ingredienser</Label>
