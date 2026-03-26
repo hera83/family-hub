@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getFamilyMembers, createFamilyMember, updateFamilyMember, deleteFamilyMember, getNormalEvents, getRecurringEvents, upsertCalendarEvent, deleteCalendarEvent } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -115,22 +115,13 @@ export default function CalendarPage() {
     },
   });
 
-  const { data: recurringEvents = [], error: recurringError } = useQuery({
+  const { data: recurringEvents = [] } = useQuery({
     queryKey: ["recurring_events", dateRange.days[dateRange.days.length - 1].toISOString()],
-    queryFn: async () => {
+    queryFn: () => {
       const endStr = format(dateRange.days[dateRange.days.length - 1], "yyyy-MM-dd");
-      console.log("DEBUG queryFn calling getRecurringEvents with endStr:", endStr);
-      try {
-        const result = await getRecurringEvents(endStr);
-        console.log("DEBUG getRecurringEvents returned:", JSON.stringify(result));
-        return result;
-      } catch (err) {
-        console.error("DEBUG getRecurringEvents ERROR:", err);
-        throw err;
-      }
+      return getRecurringEvents(endStr);
     },
   });
-  console.log("DEBUG recurringError:", recurringError, "recurringEvents length:", recurringEvents.length);
 
   const addMember = useMutation({
     mutationFn: (member: { name: string; color: string }) => createFamilyMember(member),
@@ -220,14 +211,7 @@ export default function CalendarPage() {
 
   const getEventsForDay = (day: Date) => {
     const normal = normalEvents.filter((e: any) => isSameDay(parseISO(e.event_date), day));
-    console.log("DEBUG recurringEvents count:", recurringEvents.length, "day:", format(day, "yyyy-MM-dd"));
-    const recurring = recurringEvents.filter((e: any) => {
-      const result = recursFallsOnDay(e, day);
-      if (recurringEvents.length > 0) {
-        console.log("DEBUG recursFallsOnDay:", e.title, format(day, "yyyy-MM-dd"), "result:", result, "type:", e.recurrence_type, "days:", e.recurrence_days);
-      }
-      return result;
-    }).map((e: any) => ({
+    const recurring = recurringEvents.filter((e: any) => recursFallsOnDay(e, day)).map((e: any) => ({
       ...e,
       _virtualDate: format(day, "yyyy-MM-dd"),
     }));
