@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { uploadImage } from "@/lib/api/storage";
 import { Button } from "@/components/ui/button";
 import { Upload, X } from "lucide-react";
 
@@ -16,12 +16,8 @@ export function ImageUpload({ value, onChange, folder = "uploads" }: ImageUpload
   const upload = async (file: File) => {
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const path = `${folder}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from("images").upload(path, file);
-      if (error) throw error;
-      const { data } = supabase.storage.from("images").getPublicUrl(path);
-      onChange(data.publicUrl);
+      const url = await uploadImage(file, folder);
+      onChange(url);
     } catch (err) {
       console.error("Upload error:", err);
     } finally {
