@@ -211,7 +211,14 @@ export default function CalendarPage() {
 
   const getEventsForDay = (day: Date) => {
     const normal = normalEvents.filter((e: any) => isSameDay(parseISO(e.event_date), day));
-    const recurring = recurringEvents.filter((e: any) => recursFallsOnDay(e, day)).map((e: any) => ({
+    console.log("DEBUG recurringEvents count:", recurringEvents.length, "day:", format(day, "yyyy-MM-dd"));
+    const recurring = recurringEvents.filter((e: any) => {
+      const result = recursFallsOnDay(e, day);
+      if (recurringEvents.length > 0) {
+        console.log("DEBUG recursFallsOnDay:", e.title, format(day, "yyyy-MM-dd"), "result:", result, "type:", e.recurrence_type, "days:", e.recurrence_days);
+      }
+      return result;
+    }).map((e: any) => ({
       ...e,
       _virtualDate: format(day, "yyyy-MM-dd"),
     }));
