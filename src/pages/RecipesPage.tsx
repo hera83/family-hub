@@ -120,7 +120,7 @@ export default function RecipesPage() {
         const result = await apiCreateRecipe(data);
         recipeId = result!.id;
       }
-      await saveRecipeIngredients(recipeId, ingredients);
+      await saveRecipeIngredients(recipeId, ingredients.map(i => ({ ...i, product_id: i.product_id || null, quantity: Number(i.quantity) || 1 })));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
@@ -165,10 +165,7 @@ export default function RecipesPage() {
   };
 
   const cloneRecipe = async (recipe: any) => {
-    const { data: srcIngredients } = await supabase
-      .from("recipe_ingredients")
-      .select("*, products(name)")
-      .eq("recipe_id", recipe.id);
+    const srcIngredients = await getRecipeIngredients(recipe.id);
 
     setEditingRecipe(null);
     setFormData({
@@ -337,8 +334,8 @@ export default function RecipesPage() {
                     />
                     <Button size="sm" onClick={async () => {
                       if (editingCategory.value && editingCategory.value !== cat.name) {
-                        await supabase.from("recipe_categories").update({ name: editingCategory.value }).eq("id", cat.id);
-                        await supabase.from("recipes").update({ category: editingCategory.value }).eq("category", cat.name);
+                        await updateRecipeCategory(cat.id, { name: editingCategory.value });
+                        await renameRecipeCategoryOnRecipes(cat.name, editingCategory.value);
                         queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
                         queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
                       }
@@ -366,7 +363,7 @@ export default function RecipesPage() {
                 onClick={async () => {
                   if (newCategory.trim()) {
                     const maxOrder = dbCategories.length > 0 ? Math.max(...dbCategories.map((c: any) => c.sort_order)) : 0;
-                    await supabase.from("recipe_categories").insert({ name: newCategory.trim(), sort_order: maxOrder + 1 });
+                    await createRecipeCategory({ name: newCategory.trim(), sort_order: maxOrder + 1 });
                     queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
                     setNewCategory("");
                   }
@@ -394,8 +391,8 @@ export default function RecipesPage() {
             <AlertDialogCancel className="min-h-[44px]">Annuller</AlertDialogCancel>
             <AlertDialogAction className="min-h-[44px]" onClick={async () => {
               if (!deletingCategory) return;
-              await supabase.from("recipes").update({ category: null }).eq("category", deletingCategory.name);
-              await supabase.from("recipe_categories").delete().eq("id", deletingCategory.id);
+              await clearRecipeCategoryOnRecipes(deletingCategory.name);
+              await deleteRecipeCategory(deletingCategory.id);
               queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
               queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
               setDeletingCategory(null);
