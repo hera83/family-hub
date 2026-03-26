@@ -199,7 +199,7 @@ export default function CalendarPage() {
     setNewEvent({
       title: event.title,
       description: event.description || "",
-      event_date: event.event_date,
+      event_date: event.event_date?.includes("T") ? event.event_date.split("T")[0] : event.event_date,
       start_time: event.start_time || "",
       end_time: event.end_time || "",
       member_id: event.member_id || "",
