@@ -430,7 +430,7 @@ export default function CalendarPage() {
       {/* Member admin dialog */}
       <Dialog open={showMemberAdmin} onOpenChange={setShowMemberAdmin}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Familiemedlemmer</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Familiemedlemmer</DialogTitle><DialogDescription>Administrer familiemedlemmer og deres farver</DialogDescription></DialogHeader>
           <div className="space-y-3">
             {members.map((m: any) => (
               <div key={m.id} className="flex items-center gap-2">
@@ -463,7 +463,7 @@ export default function CalendarPage() {
       {/* Add/Edit event dialog */}
       <Dialog open={showEventDialog} onOpenChange={setShowEventDialog}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editingEvent ? "Rediger aktivitet" : "Ny aktivitet"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingEvent ? "Rediger aktivitet" : "Ny aktivitet"}</DialogTitle><DialogDescription>Udfyld detaljer for aktiviteten</DialogDescription></DialogHeader>
           <div className="space-y-3">
             <div><Label>Titel</Label><Input value={newEvent.title} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} className="min-h-[44px]" /></div>
             <div><Label>{newEvent.recurrence_type ? "Startdato" : "Dato"}</Label><Input type="date" value={newEvent.event_date} onChange={(e) => setNewEvent({ ...newEvent, event_date: e.target.value })} className="min-h-[44px]" /></div>
@@ -575,6 +575,7 @@ export default function CalendarPage() {
             <DialogTitle>
               {showEventPopup && format(showEventPopup.date, "d. MMMM", { locale: da })} – {members.find((m: any) => m.id === showEventPopup?.memberId)?.name}
             </DialogTitle>
+            <DialogDescription>Aktiviteter for dette medlem på denne dag</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {showEventPopup &&
