@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { getRecipes, getRecipeCategories, getMealPlans, createMealPlan, updateMealPlan, deleteMealPlan, getRecipeIngredientsWithProducts, addShoppingListItem, deleteShoppingListByMealPlan, getMealPlanOrderStatus as fetchMealPlanOrderStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -39,25 +39,17 @@ function convertToPackages(recipeQty: number, recipeUnit: string, productSizeLab
 }
 
 async function syncShoppingListForMealPlan(recipeId: string, mealPlanId: string, action: "add" | "remove") {
-  const { data: ingredients } = await supabase
-    .from("recipe_ingredients")
-    .select("*, products(name, category_id, unit, size_label, is_staple)")
-    .eq("recipe_id", recipeId);
-
+  const ingredients = await getRecipeIngredientsWithProducts(recipeId);
   if (!ingredients || ingredients.length === 0) return;
 
   if (action === "add") {
     for (const ing of ingredients) {
       if (ing.is_staple || ing.products?.is_staple) continue;
-
       const qty = convertToPackages(
-        ing.quantity,
-        ing.unit || "stk",
-        ing.products?.size_label || null,
-        ing.products?.unit || null
+        ing.quantity, ing.unit || "stk",
+        ing.products?.size_label || null, ing.products?.unit || null
       );
-
-      await supabase.from("shopping_list_items").insert({
+      await addShoppingListItem({
         product_name: ing.products?.name || ing.name || "Ukendt",
         product_id: ing.product_id,
         category_id: ing.products?.category_id || null,
@@ -71,11 +63,7 @@ async function syncShoppingListForMealPlan(recipeId: string, mealPlanId: string,
       });
     }
   } else {
-    await supabase
-      .from("shopping_list_items")
-      .delete()
-      .eq("meal_plan_id", mealPlanId)
-      .eq("is_ordered", false);
+    await deleteShoppingListByMealPlan(mealPlanId);
   }
 }
 
@@ -93,30 +81,17 @@ export default function MealPlanPage() {
 
   const { data: mealPlans = [] } = useQuery({
     queryKey: ["meal_plans", weekStartStr],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("meal_plans")
-        .select("*, recipes(*)")
-        .eq("week_start", weekStartStr)
-        .order("day_of_week");
-      return data || [];
-    },
+    queryFn: () => getMealPlans(weekStartStr),
   });
 
   const { data: recipes = [] } = useQuery({
     queryKey: ["recipes"],
-    queryFn: async () => {
-      const { data } = await supabase.from("recipes").select("*").order("title");
-      return data || [];
-    },
+    queryFn: () => getRecipes(),
   });
 
   const { data: recipeCategories = [] } = useQuery({
     queryKey: ["recipe_categories"],
-    queryFn: async () => {
-      const { data } = await supabase.from("recipe_categories").select("*").order("sort_order");
-      return data || [];
-    },
+    queryFn: () => getRecipeCategories(),
   });
 
   const CATEGORIES = useMemo(() => {
