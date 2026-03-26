@@ -55,7 +55,9 @@ function toISODay(jsDay: number) {
 }
 
 function recursFallsOnDay(event: any, day: Date): boolean {
-  const eventStart = parseISO(event.event_date);
+  // Parse date as local (not UTC) by appending T00:00:00
+  const dateStr = typeof event.event_date === "string" ? event.event_date.split("T")[0] : event.event_date;
+  const eventStart = new Date(dateStr + "T00:00:00");
   if (isBefore(day, eventStart)) return false;
 
   switch (event.recurrence_type) {
