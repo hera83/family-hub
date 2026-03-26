@@ -115,13 +115,22 @@ export default function CalendarPage() {
     },
   });
 
-  const { data: recurringEvents = [] } = useQuery({
+  const { data: recurringEvents = [], error: recurringError } = useQuery({
     queryKey: ["recurring_events", dateRange.days[dateRange.days.length - 1].toISOString()],
-    queryFn: () => {
+    queryFn: async () => {
       const endStr = format(dateRange.days[dateRange.days.length - 1], "yyyy-MM-dd");
-      return getRecurringEvents(endStr);
+      console.log("DEBUG queryFn calling getRecurringEvents with endStr:", endStr);
+      try {
+        const result = await getRecurringEvents(endStr);
+        console.log("DEBUG getRecurringEvents returned:", JSON.stringify(result));
+        return result;
+      } catch (err) {
+        console.error("DEBUG getRecurringEvents ERROR:", err);
+        throw err;
+      }
     },
   });
+  console.log("DEBUG recurringError:", recurringError, "recurringEvents length:", recurringEvents.length);
 
   const addMember = useMutation({
     mutationFn: (member: { name: string; color: string }) => createFamilyMember(member),
