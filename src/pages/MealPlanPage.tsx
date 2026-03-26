@@ -166,16 +166,13 @@ export default function MealPlanPage() {
         fromDate.setDate(fromDate.getDate() + fromDay);
         const toDate = new Date(weekStart);
         toDate.setDate(toDate.getDate() + toDay);
-        await supabase.from("meal_plans").update({ day_of_week: toDay, plan_date: format(toDate, "yyyy-MM-dd") }).eq("id", fromPlan.id);
-        await supabase.from("meal_plans").update({ day_of_week: fromDay, plan_date: format(fromDate, "yyyy-MM-dd") }).eq("id", toPlan.id);
+        await updateMealPlan(fromPlan.id, { day_of_week: toDay, plan_date: format(toDate, "yyyy-MM-dd") });
+        await updateMealPlan(toPlan.id, { day_of_week: fromDay, plan_date: format(fromDate, "yyyy-MM-dd") });
       } else if (fromPlan && !toPlan) {
         // Move to empty day: only update date fields, keep same ID
         const date = new Date(weekStart);
         date.setDate(date.getDate() + toDay);
-        await supabase.from("meal_plans").update({
-          day_of_week: toDay,
-          plan_date: format(date, "yyyy-MM-dd"),
-        }).eq("id", fromPlan.id);
+        await updateMealPlan(fromPlan.id, { day_of_week: toDay, plan_date: format(date, "yyyy-MM-dd") });
       }
     },
     onSuccess: () => {
