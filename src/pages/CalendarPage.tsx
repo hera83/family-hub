@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { getFamilyMembers, createFamilyMember, updateFamilyMember, deleteFamilyMember, getNormalEvents, getRecurringEvents, upsertCalendarEvent, deleteCalendarEvent } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -90,10 +90,7 @@ export default function CalendarPage() {
 
   const { data: members = [] } = useQuery({
     queryKey: ["family_members"],
-    queryFn: async () => {
-      const { data } = await supabase.from("family_members").select("*").order("created_at");
-      return data || [];
-    },
+    queryFn: () => getFamilyMembers(),
   });
 
   const dateRange = useMemo(() => {
@@ -111,38 +108,23 @@ export default function CalendarPage() {
 
   const { data: normalEvents = [] } = useQuery({
     queryKey: ["calendar_events", dateRange.start.toISOString(), dateRange.end.toISOString()],
-    queryFn: async () => {
+    queryFn: () => {
       const startStr = format(dateRange.days[0], "yyyy-MM-dd");
       const endStr = format(dateRange.days[dateRange.days.length - 1], "yyyy-MM-dd");
-      const { data } = await supabase
-        .from("calendar_events")
-        .select("*, family_members(name, color)")
-        .is("recurrence_type", null)
-        .gte("event_date", startStr)
-        .lte("event_date", endStr)
-        .order("start_time");
-      return data || [];
+      return getNormalEvents(startStr, endStr);
     },
   });
 
   const { data: recurringEvents = [] } = useQuery({
     queryKey: ["recurring_events", dateRange.days[dateRange.days.length - 1].toISOString()],
-    queryFn: async () => {
+    queryFn: () => {
       const endStr = format(dateRange.days[dateRange.days.length - 1], "yyyy-MM-dd");
-      const { data } = await supabase
-        .from("calendar_events")
-        .select("*, family_members(name, color)")
-        .not("recurrence_type", "is", null)
-        .lte("event_date", endStr)
-        .order("start_time");
-      return data || [];
+      return getRecurringEvents(endStr);
     },
   });
 
   const addMember = useMutation({
-    mutationFn: async (member: { name: string; color: string }) => {
-      await supabase.from("family_members").insert(member);
-    },
+    mutationFn: (member: { name: string; color: string }) => createFamilyMember(member),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["family_members"] });
       setNewMember({ name: "", color: MUTED_COLORS[members.length % MUTED_COLORS.length] });
@@ -150,9 +132,7 @@ export default function CalendarPage() {
   });
 
   const updateMember = useMutation({
-    mutationFn: async ({ id, ...data }: any) => {
-      await supabase.from("family_members").update(data).eq("id", id);
-    },
+    mutationFn: async ({ id, ...data }: any) => updateFamilyMember(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["family_members"] });
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
@@ -162,9 +142,7 @@ export default function CalendarPage() {
   });
 
   const deleteMember = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("family_members").delete().eq("id", id);
-    },
+    mutationFn: (id: string) => deleteFamilyMember(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["family_members"] });
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
@@ -173,13 +151,7 @@ export default function CalendarPage() {
   });
 
   const addEvent = useMutation({
-    mutationFn: async (event: any) => {
-      if (event.id) {
-        await supabase.from("calendar_events").update(event).eq("id", event.id);
-      } else {
-        await supabase.from("calendar_events").insert(event);
-      }
-    },
+    mutationFn: (event: any) => upsertCalendarEvent(event),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
       queryClient.invalidateQueries({ queryKey: ["recurring_events"] });
@@ -190,9 +162,7 @@ export default function CalendarPage() {
   });
 
   const deleteEvent = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("calendar_events").delete().eq("id", id);
-    },
+    mutationFn: (id: string) => deleteCalendarEvent(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar_events"] });
       queryClient.invalidateQueries({ queryKey: ["recurring_events"] });

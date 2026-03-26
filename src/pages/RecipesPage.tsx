@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { getRecipeCategories, createRecipeCategory, updateRecipeCategory, deleteRecipeCategory, renameRecipeCategoryOnRecipes, clearRecipeCategoryOnRecipes, getRecipesPaginated, getProducts, getRecipeIngredients, createRecipe as apiCreateRecipe, updateRecipe as apiUpdateRecipe, deleteRecipe as apiDeleteRecipe, toggleRecipeFavorite, saveRecipeIngredients } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -57,10 +57,7 @@ export default function RecipesPage() {
   // Categories from DB
   const { data: dbCategories = [] } = useQuery({
     queryKey: ["recipe_categories"],
-    queryFn: async () => {
-      const { data } = await supabase.from("recipe_categories").select("*").order("sort_order");
-      return data || [];
-    },
+    queryFn: () => getRecipeCategories(),
   });
 
   const categories = useMemo(() => {
@@ -70,21 +67,12 @@ export default function RecipesPage() {
 
   const { data: recipesData } = useQuery({
     queryKey: ["recipes_paginated", searchQuery, categoryFilter, page],
-    queryFn: async () => {
-      let query = supabase.from("recipes").select("*", { count: "exact" });
-      if (categoryFilter !== "Alle") query = query.eq("category", categoryFilter);
-      if (searchQuery) query = query.ilike("title", `%${searchQuery}%`);
-      const { data, count } = await query.order("created_at", { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-      return { recipes: data || [], total: count || 0 };
-    },
+    queryFn: () => getRecipesPaginated({ search: searchQuery, category: categoryFilter, page, pageSize: PAGE_SIZE }),
   });
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
-    queryFn: async () => {
-      const { data } = await supabase.from("products").select("*, item_categories(name)").order("name");
-      return data || [];
-    },
+    queryFn: () => getProducts(),
   });
 
   const filteredProducts = useMemo(() => {
@@ -94,23 +82,19 @@ export default function RecipesPage() {
 
   useEffect(() => {
     if (showEditor && editingRecipe?.id) {
-      supabase
-        .from("recipe_ingredients")
-        .select("*, products(name)")
-        .eq("recipe_id", editingRecipe.id)
-        .then(({ data }) => {
+      getRecipeIngredients(editingRecipe.id).then((data) => {
         setIngredients(
-            (data || []).map((ing: any) => ({
-              id: ing.id,
-              client_id: nextClientId(),
-              product_id: ing.product_id,
-              product_name: ing.products?.name || ing.name || "",
-              quantity: ing.quantity,
-              unit: ing.unit || "stk",
-              is_staple: ing.is_staple || false,
-            }))
-          );
-        });
+          (data || []).map((ing: any) => ({
+            id: ing.id,
+            client_id: nextClientId(),
+            product_id: ing.product_id,
+            product_name: ing.products?.name || ing.name || "",
+            quantity: ing.quantity,
+            unit: ing.unit || "stk",
+            is_staple: ing.is_staple || false,
+          }))
+        );
+      });
     } else if (showEditor && !editingRecipe) {
       setIngredients([]);
     }
@@ -130,43 +114,13 @@ export default function RecipesPage() {
       let recipeId: string;
       if (data.id) {
         const { id, ...rest } = data;
-        await supabase.from("recipes").update(rest).eq("id", id);
+        await apiUpdateRecipe(id, rest);
         recipeId = id;
       } else {
-        const { data: inserted } = await supabase.from("recipes").insert(data).select("id").single();
-        recipeId = inserted!.id;
+        const result = await apiCreateRecipe(data);
+        recipeId = result!.id;
       }
-
-      const existing = ingredients.filter((i) => i.id && !i._deleted);
-      const toDelete = ingredients.filter((i) => i.id && i._deleted);
-      const toInsert = ingredients.filter((i) => !i.id && !i._deleted);
-
-      if (toDelete.length > 0) {
-        await supabase.from("recipe_ingredients").delete().in("id", toDelete.map((i) => i.id!));
-      }
-
-      for (const ing of existing) {
-        await supabase.from("recipe_ingredients").update({
-          product_id: ing.product_id,
-          name: ing.product_name,
-          quantity: Number(ing.quantity) || 1,
-          unit: ing.unit,
-          is_staple: ing.is_staple,
-        }).eq("id", ing.id!);
-      }
-
-      if (toInsert.length > 0) {
-        await supabase.from("recipe_ingredients").insert(
-          toInsert.map((ing) => ({
-            recipe_id: recipeId,
-            product_id: ing.product_id,
-            name: ing.product_name,
-            quantity: Number(ing.quantity) || 1,
-            unit: ing.unit,
-            is_staple: ing.is_staple,
-          }))
-        );
-      }
+      await saveRecipeIngredients(recipeId, ingredients.map(i => ({ ...i, product_id: i.product_id || null, quantity: Number(i.quantity) || 1 })));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
@@ -176,10 +130,7 @@ export default function RecipesPage() {
   });
 
   const deleteRecipe = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("recipe_ingredients").delete().eq("recipe_id", id);
-      await supabase.from("recipes").delete().eq("id", id);
-    },
+    mutationFn: (id: string) => apiDeleteRecipe(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
@@ -188,9 +139,7 @@ export default function RecipesPage() {
   });
 
   const toggleFavorite = useMutation({
-    mutationFn: async ({ id, is_favorite }: { id: string; is_favorite: boolean }) => {
-      await supabase.from("recipes").update({ is_favorite }).eq("id", id);
-    },
+    mutationFn: ({ id, is_favorite }: { id: string; is_favorite: boolean }) => toggleRecipeFavorite(id, is_favorite),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
@@ -216,10 +165,7 @@ export default function RecipesPage() {
   };
 
   const cloneRecipe = async (recipe: any) => {
-    const { data: srcIngredients } = await supabase
-      .from("recipe_ingredients")
-      .select("*, products(name)")
-      .eq("recipe_id", recipe.id);
+    const srcIngredients = await getRecipeIngredients(recipe.id);
 
     setEditingRecipe(null);
     setFormData({
@@ -388,8 +334,8 @@ export default function RecipesPage() {
                     />
                     <Button size="sm" onClick={async () => {
                       if (editingCategory.value && editingCategory.value !== cat.name) {
-                        await supabase.from("recipe_categories").update({ name: editingCategory.value }).eq("id", cat.id);
-                        await supabase.from("recipes").update({ category: editingCategory.value }).eq("category", cat.name);
+                        await updateRecipeCategory(cat.id, { name: editingCategory.value });
+                        await renameRecipeCategoryOnRecipes(cat.name, editingCategory.value);
                         queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
                         queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
                       }
@@ -417,7 +363,7 @@ export default function RecipesPage() {
                 onClick={async () => {
                   if (newCategory.trim()) {
                     const maxOrder = dbCategories.length > 0 ? Math.max(...dbCategories.map((c: any) => c.sort_order)) : 0;
-                    await supabase.from("recipe_categories").insert({ name: newCategory.trim(), sort_order: maxOrder + 1 });
+                    await createRecipeCategory({ name: newCategory.trim(), sort_order: maxOrder + 1 });
                     queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
                     setNewCategory("");
                   }
@@ -445,8 +391,8 @@ export default function RecipesPage() {
             <AlertDialogCancel className="min-h-[44px]">Annuller</AlertDialogCancel>
             <AlertDialogAction className="min-h-[44px]" onClick={async () => {
               if (!deletingCategory) return;
-              await supabase.from("recipes").update({ category: null }).eq("category", deletingCategory.name);
-              await supabase.from("recipe_categories").delete().eq("id", deletingCategory.id);
+              await clearRecipeCategoryOnRecipes(deletingCategory.name);
+              await deleteRecipeCategory(deletingCategory.id);
               queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
               queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
               setDeletingCategory(null);

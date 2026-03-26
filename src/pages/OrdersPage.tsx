@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { getOrders, deleteOrder } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Package, FileText, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
@@ -15,21 +15,15 @@ export default function OrdersPage() {
 
   const { data: ordersData } = useQuery({
     queryKey: ["orders"],
-    queryFn: async () => {
-      const { data } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
-      return data || [];
-    },
+    queryFn: () => getOrders(),
   });
 
   const orders = ordersData || [];
   const totalPages = Math.ceil(orders.length / PAGE_SIZE);
   const pagedOrders = orders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const deleteOrder = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("order_lines").delete().eq("order_id", id);
-      await supabase.from("orders").delete().eq("id", id);
-    },
+  const deleteOrderMut = useMutation({
+    mutationFn: (id: string) => deleteOrder(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
   });
 
@@ -76,7 +70,7 @@ export default function OrdersPage() {
                     )}
                   </td>
                   <td className="p-3">
-                    <Button size="icon" variant="ghost" onClick={() => deleteOrder.mutate(order.id)} className="min-h-[36px] min-w-[36px] text-destructive">
+                    <Button size="icon" variant="ghost" onClick={() => deleteOrderMut.mutate(order.id)} className="min-h-[36px] min-w-[36px] text-destructive">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </td>

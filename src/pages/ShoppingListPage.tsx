@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { getShoppingListItems, addShoppingListItem, updateShoppingListItem, deleteShoppingListItem, markItemsOrdered, getProducts, createProduct, updateProduct, deleteProduct, getItemCategories, createItemCategory, updateItemCategory, deleteItemCategory, getOrders, createOrder, createOrderLines, getTopProductNames } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -89,38 +89,22 @@ export default function ShoppingListPage() {
 
   const { data: items = [] } = useQuery({
     queryKey: ["shopping_list_items"],
-    queryFn: async () => {
-      const { data } = await supabase.from("shopping_list_items").select("*, item_categories(name, sort_order), recipes(title)").eq("is_ordered", false).order("created_at");
-      return data || [];
-    },
+    queryFn: () => getShoppingListItems(),
   });
 
   const { data: categories = [] } = useQuery({
     queryKey: ["item_categories"],
-    queryFn: async () => {
-      const { data } = await supabase.from("item_categories").select("*").order("sort_order");
-      return data || [];
-    },
+    queryFn: () => getItemCategories(),
   });
 
   const { data: products = [] } = useQuery({
     queryKey: ["products_catalog"],
-    queryFn: async () => {
-      const { data } = await supabase.from("products").select("*, item_categories(name)").order("name");
-      return data || [];
-    },
+    queryFn: () => getProducts(),
   });
 
   const { data: topProducts = [] } = useQuery({
     queryKey: ["top_products"],
-    queryFn: async () => {
-      const { data } = await supabase.from("order_lines").select("product_name");
-      if (!data) return [];
-      const counts: Record<string, number> = {};
-      data.forEach((l: any) => { counts[l.product_name] = (counts[l.product_name] || 0) + 1; });
-      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name]) => name);
-      return sorted;
-    },
+    queryFn: () => getTopProductNames(),
   });
 
   const groupedByProduct = useMemo(() => {
@@ -188,23 +172,20 @@ export default function ShoppingListPage() {
   }, [products, productSearch, favoritesOnly, topProducts]);
 
   const toggleCheck = useMutation({
-    mutationFn: async ({ id, checked }: { id: string; checked: boolean }) => {
-      await supabase.from("shopping_list_items").update({ is_checked: checked }).eq("id", id);
-    },
+    mutationFn: ({ id, checked }: { id: string; checked: boolean }) => updateShoppingListItem(id, { is_checked: checked }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] }),
   });
 
   const addItemFromProduct = useMutation({
-    mutationFn: async ({ product, quantity }: { product: any; quantity: number }) => {
-      await supabase.from("shopping_list_items").insert({
+    mutationFn: ({ product, quantity }: { product: any; quantity: number }) =>
+      addShoppingListItem({
         product_name: product.name,
         product_id: product.id,
         category_id: product.category_id || null,
         quantity,
         unit: product.unit || "stk",
         source_type: "manual",
-      });
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
       setShowAddItem(false);
@@ -216,7 +197,7 @@ export default function ShoppingListPage() {
 
   const createProductMutation = useMutation({
     mutationFn: async (product: any) => {
-      const { data } = await supabase.from("products").insert({
+      return createProduct({
         name: product.name,
         unit: product.unit,
         category_id: product.category_id || null,
@@ -232,8 +213,7 @@ export default function ShoppingListPage() {
         carbs_per_100g: product.carbs_per_100g ? parseFloat(product.carbs_per_100g) : null,
         protein_per_100g: product.protein_per_100g ? parseFloat(product.protein_per_100g) : null,
         fiber_per_100g: product.fiber_per_100g ? parseFloat(product.fiber_per_100g) : null,
-      }).select("*, item_categories(name)").single();
-      return data;
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products_catalog"] });
@@ -245,7 +225,7 @@ export default function ShoppingListPage() {
   const updateProductMutation = useMutation({
     mutationFn: async (product: any) => {
       const { id, item_categories, ...rest } = product;
-      await supabase.from("products").update({
+      await updateProduct(id, {
         ...rest,
         price: rest.price ? parseFloat(rest.price.toString().replace(",", ".")) : null,
         calories_per_100g: rest.calories_per_100g ? parseFloat(rest.calories_per_100g) : null,
@@ -253,7 +233,7 @@ export default function ShoppingListPage() {
         carbs_per_100g: rest.carbs_per_100g ? parseFloat(rest.carbs_per_100g) : null,
         protein_per_100g: rest.protein_per_100g ? parseFloat(rest.protein_per_100g) : null,
         fiber_per_100g: rest.fiber_per_100g ? parseFloat(rest.fiber_per_100g) : null,
-      }).eq("id", id);
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products_catalog"] });
@@ -262,23 +242,17 @@ export default function ShoppingListPage() {
   });
 
   const deleteProductMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("products").delete().eq("id", id);
-    },
+    mutationFn: (id: string) => deleteProduct(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["products_catalog"] }),
   });
 
   const deleteItem = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("shopping_list_items").delete().eq("id", id);
-    },
+    mutationFn: (id: string) => deleteShoppingListItem(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] }),
   });
 
   const updateItemQty = useMutation({
-    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
-      await supabase.from("shopping_list_items").update({ quantity }).eq("id", id);
-    },
+    mutationFn: ({ id, quantity }: { id: string; quantity: number }) => updateShoppingListItem(id, { quantity }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
       setEditingLine(null);
@@ -286,9 +260,7 @@ export default function ShoppingListPage() {
   });
 
   const addCategory = useMutation({
-    mutationFn: async (cat: { name: string; sort_order: number }) => {
-      await supabase.from("item_categories").insert(cat);
-    },
+    mutationFn: (cat: { name: string; sort_order: number }) => createItemCategory(cat),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["item_categories"] });
       setNewCategory({ name: "", sort_order: categories.length + 1 });
@@ -296,9 +268,7 @@ export default function ShoppingListPage() {
   });
 
   const updateCategory = useMutation({
-    mutationFn: async ({ id, ...data }: any) => {
-      await supabase.from("item_categories").update(data).eq("id", id);
-    },
+    mutationFn: async ({ id, ...data }: any) => updateItemCategory(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["item_categories"] });
       queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
@@ -307,9 +277,7 @@ export default function ShoppingListPage() {
   });
 
   const deleteCategory = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("item_categories").delete().eq("id", id);
-    },
+    mutationFn: (id: string) => deleteItemCategory(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["item_categories"] });
       queryClient.invalidateQueries({ queryKey: ["shopping_list_items"] });
@@ -401,12 +369,12 @@ export default function ShoppingListPage() {
       const rawPdf = doc.output("datauristring");
       const pdfBase64 = rawPdf.replace(/;filename=[^;]*/, "");
 
-      const { data: order } = await supabase.from("orders").insert({
+      const order = await createOrder({
         status: "completed",
         total_items: aggregated.reduce((s, a) => s + a.totalQty, 0),
         total_price: orderTotal,
         pdf_data: pdfBase64,
-      }).select().single();
+      });
 
       if (!order) return;
 
@@ -419,14 +387,10 @@ export default function ShoppingListPage() {
         price: a.price,
         size_label: a.size_label || null,
       }));
-      await supabase.from("order_lines").insert(lines);
+      await createOrderLines(lines);
 
       const ids = unchecked.map((i: any) => i.id);
-      await supabase.from("shopping_list_items").update({
-        is_ordered: true,
-        order_id: order.id,
-        ordered_at: new Date().toISOString(),
-      }).in("id", ids);
+      await markItemsOrdered(ids, order.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });

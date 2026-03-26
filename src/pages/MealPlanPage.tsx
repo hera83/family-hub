@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { getRecipes, getRecipeCategories, getMealPlans, createMealPlan, updateMealPlan, deleteMealPlan, getRecipeIngredientsWithProducts, addShoppingListItem, deleteShoppingListByMealPlan, getMealPlanOrderStatus as fetchMealPlanOrderStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -39,25 +39,17 @@ function convertToPackages(recipeQty: number, recipeUnit: string, productSizeLab
 }
 
 async function syncShoppingListForMealPlan(recipeId: string, mealPlanId: string, action: "add" | "remove") {
-  const { data: ingredients } = await supabase
-    .from("recipe_ingredients")
-    .select("*, products(name, category_id, unit, size_label, is_staple)")
-    .eq("recipe_id", recipeId);
-
+  const ingredients = await getRecipeIngredientsWithProducts(recipeId);
   if (!ingredients || ingredients.length === 0) return;
 
   if (action === "add") {
     for (const ing of ingredients) {
       if (ing.is_staple || ing.products?.is_staple) continue;
-
       const qty = convertToPackages(
-        ing.quantity,
-        ing.unit || "stk",
-        ing.products?.size_label || null,
-        ing.products?.unit || null
+        ing.quantity, ing.unit || "stk",
+        ing.products?.size_label || null, ing.products?.unit || null
       );
-
-      await supabase.from("shopping_list_items").insert({
+      await addShoppingListItem({
         product_name: ing.products?.name || ing.name || "Ukendt",
         product_id: ing.product_id,
         category_id: ing.products?.category_id || null,
@@ -71,11 +63,7 @@ async function syncShoppingListForMealPlan(recipeId: string, mealPlanId: string,
       });
     }
   } else {
-    await supabase
-      .from("shopping_list_items")
-      .delete()
-      .eq("meal_plan_id", mealPlanId)
-      .eq("is_ordered", false);
+    await deleteShoppingListByMealPlan(mealPlanId);
   }
 }
 
@@ -93,30 +81,17 @@ export default function MealPlanPage() {
 
   const { data: mealPlans = [] } = useQuery({
     queryKey: ["meal_plans", weekStartStr],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("meal_plans")
-        .select("*, recipes(*)")
-        .eq("week_start", weekStartStr)
-        .order("day_of_week");
-      return data || [];
-    },
+    queryFn: () => getMealPlans(weekStartStr),
   });
 
   const { data: recipes = [] } = useQuery({
     queryKey: ["recipes"],
-    queryFn: async () => {
-      const { data } = await supabase.from("recipes").select("*").order("title");
-      return data || [];
-    },
+    queryFn: () => getRecipes(),
   });
 
   const { data: recipeCategories = [] } = useQuery({
     queryKey: ["recipe_categories"],
-    queryFn: async () => {
-      const { data } = await supabase.from("recipe_categories").select("*").order("sort_order");
-      return data || [];
-    },
+    queryFn: () => getRecipeCategories(),
   });
 
   const CATEGORIES = useMemo(() => {
@@ -131,30 +106,7 @@ export default function MealPlanPage() {
   const { data: mealPlanOrderStatus = {} } = useQuery({
     queryKey: ["meal_plan_order_status", mealPlanIds],
     enabled: mealPlanIds.length > 0,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("shopping_list_items")
-        .select("meal_plan_id, is_ordered, ordered_at")
-        .in("meal_plan_id", mealPlanIds);
-
-      if (!data) return {};
-
-      const statusMap: Record<string, { total: number; ordered: number; latestOrderedAt: string | null }> = {};
-      data.forEach((item: any) => {
-        if (!item.meal_plan_id) return;
-        if (!statusMap[item.meal_plan_id]) {
-          statusMap[item.meal_plan_id] = { total: 0, ordered: 0, latestOrderedAt: null };
-        }
-        statusMap[item.meal_plan_id].total++;
-        if (item.is_ordered) {
-          statusMap[item.meal_plan_id].ordered++;
-          if (!statusMap[item.meal_plan_id].latestOrderedAt || item.ordered_at > statusMap[item.meal_plan_id].latestOrderedAt!) {
-            statusMap[item.meal_plan_id].latestOrderedAt = item.ordered_at;
-          }
-        }
-      });
-      return statusMap;
-    },
+    queryFn: () => fetchMealPlanOrderStatus(mealPlanIds),
   });
 
   const filteredRecipes = useMemo(() => {
@@ -176,22 +128,21 @@ export default function MealPlanPage() {
 
       if (existing) {
         if (recipeId) {
-          await supabase.from("meal_plans").update({ recipe_id: recipeId }).eq("id", existing.id);
+          await updateMealPlan(existing.id, { recipe_id: recipeId });
           await syncShoppingListForMealPlan(recipeId, existing.id, "add");
         } else {
           await syncShoppingListForMealPlan(existing.recipe_id, existing.id, "remove");
-          await supabase.from("meal_plans").delete().eq("id", existing.id);
+          await deleteMealPlan(existing.id);
         }
       } else if (recipeId) {
         const date = new Date(weekStart);
         date.setDate(date.getDate() + dayOfWeek);
-        const { data: newPlan } = await supabase.from("meal_plans").insert({
+        const newPlan = await createMealPlan({
           day_of_week: dayOfWeek,
           recipe_id: recipeId,
           week_start: weekStartStr,
           plan_date: format(date, "yyyy-MM-dd"),
-        }).select().single();
-
+        });
         if (newPlan) {
           await syncShoppingListForMealPlan(recipeId, newPlan.id, "add");
         }
@@ -215,16 +166,13 @@ export default function MealPlanPage() {
         fromDate.setDate(fromDate.getDate() + fromDay);
         const toDate = new Date(weekStart);
         toDate.setDate(toDate.getDate() + toDay);
-        await supabase.from("meal_plans").update({ day_of_week: toDay, plan_date: format(toDate, "yyyy-MM-dd") }).eq("id", fromPlan.id);
-        await supabase.from("meal_plans").update({ day_of_week: fromDay, plan_date: format(fromDate, "yyyy-MM-dd") }).eq("id", toPlan.id);
+        await updateMealPlan(fromPlan.id, { day_of_week: toDay, plan_date: format(toDate, "yyyy-MM-dd") });
+        await updateMealPlan(toPlan.id, { day_of_week: fromDay, plan_date: format(fromDate, "yyyy-MM-dd") });
       } else if (fromPlan && !toPlan) {
         // Move to empty day: only update date fields, keep same ID
         const date = new Date(weekStart);
         date.setDate(date.getDate() + toDay);
-        await supabase.from("meal_plans").update({
-          day_of_week: toDay,
-          plan_date: format(date, "yyyy-MM-dd"),
-        }).eq("id", fromPlan.id);
+        await updateMealPlan(fromPlan.id, { day_of_week: toDay, plan_date: format(date, "yyyy-MM-dd") });
       }
     },
     onSuccess: () => {
