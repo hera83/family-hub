@@ -12,6 +12,7 @@ import { shoppingListRouter } from "./routes/shoppingList.js";
 import { productsRouter } from "./routes/products.js";
 import { itemCategoriesRouter } from "./routes/itemCategories.js";
 import { ordersRouter } from "./routes/orders.js";
+import { orderLinesRouter } from "./routes/orderLines.js";
 import { storageRouter } from "./routes/storage.js";
 
 dotenv.config();
@@ -46,6 +47,7 @@ app.use("/api/shopping-list", shoppingListRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/item-categories", itemCategoriesRouter);
 app.use("/api/orders", ordersRouter);
+app.use("/api/order-lines", orderLinesRouter);
 app.use("/api/storage", storageRouter);
 
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
