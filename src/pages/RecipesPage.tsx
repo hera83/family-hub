@@ -82,23 +82,19 @@ export default function RecipesPage() {
 
   useEffect(() => {
     if (showEditor && editingRecipe?.id) {
-      supabase
-        .from("recipe_ingredients")
-        .select("*, products(name)")
-        .eq("recipe_id", editingRecipe.id)
-        .then(({ data }) => {
+      getRecipeIngredients(editingRecipe.id).then((data) => {
         setIngredients(
-            (data || []).map((ing: any) => ({
-              id: ing.id,
-              client_id: nextClientId(),
-              product_id: ing.product_id,
-              product_name: ing.products?.name || ing.name || "",
-              quantity: ing.quantity,
-              unit: ing.unit || "stk",
-              is_staple: ing.is_staple || false,
-            }))
-          );
-        });
+          (data || []).map((ing: any) => ({
+            id: ing.id,
+            client_id: nextClientId(),
+            product_id: ing.product_id,
+            product_name: ing.products?.name || ing.name || "",
+            quantity: ing.quantity,
+            unit: ing.unit || "stk",
+            is_staple: ing.is_staple || false,
+          }))
+        );
+      });
     } else if (showEditor && !editingRecipe) {
       setIngredients([]);
     }
@@ -118,43 +114,13 @@ export default function RecipesPage() {
       let recipeId: string;
       if (data.id) {
         const { id, ...rest } = data;
-        await supabase.from("recipes").update(rest).eq("id", id);
+        await apiUpdateRecipe(id, rest);
         recipeId = id;
       } else {
-        const { data: inserted } = await supabase.from("recipes").insert(data).select("id").single();
-        recipeId = inserted!.id;
+        const result = await apiCreateRecipe(data);
+        recipeId = result!.id;
       }
-
-      const existing = ingredients.filter((i) => i.id && !i._deleted);
-      const toDelete = ingredients.filter((i) => i.id && i._deleted);
-      const toInsert = ingredients.filter((i) => !i.id && !i._deleted);
-
-      if (toDelete.length > 0) {
-        await supabase.from("recipe_ingredients").delete().in("id", toDelete.map((i) => i.id!));
-      }
-
-      for (const ing of existing) {
-        await supabase.from("recipe_ingredients").update({
-          product_id: ing.product_id,
-          name: ing.product_name,
-          quantity: Number(ing.quantity) || 1,
-          unit: ing.unit,
-          is_staple: ing.is_staple,
-        }).eq("id", ing.id!);
-      }
-
-      if (toInsert.length > 0) {
-        await supabase.from("recipe_ingredients").insert(
-          toInsert.map((ing) => ({
-            recipe_id: recipeId,
-            product_id: ing.product_id,
-            name: ing.product_name,
-            quantity: Number(ing.quantity) || 1,
-            unit: ing.unit,
-            is_staple: ing.is_staple,
-          }))
-        );
-      }
+      await saveRecipeIngredients(recipeId, ingredients);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
@@ -164,10 +130,7 @@ export default function RecipesPage() {
   });
 
   const deleteRecipe = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from("recipe_ingredients").delete().eq("recipe_id", id);
-      await supabase.from("recipes").delete().eq("id", id);
-    },
+    mutationFn: (id: string) => apiDeleteRecipe(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
@@ -176,9 +139,7 @@ export default function RecipesPage() {
   });
 
   const toggleFavorite = useMutation({
-    mutationFn: async ({ id, is_favorite }: { id: string; is_favorite: boolean }) => {
-      await supabase.from("recipes").update({ is_favorite }).eq("id", id);
-    },
+    mutationFn: ({ id, is_favorite }: { id: string; is_favorite: boolean }) => toggleRecipeFavorite(id, is_favorite),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recipes_paginated"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
