@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getFamilyMembers, createFamilyMember, updateFamilyMember, deleteFamilyMember, getNormalEvents, getRecurringEvents, upsertCalendarEvent, deleteCalendarEvent } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -199,7 +199,7 @@ export default function CalendarPage() {
     setNewEvent({
       title: event.title,
       description: event.description || "",
-      event_date: event.event_date,
+      event_date: event.event_date?.includes("T") ? event.event_date.split("T")[0] : event.event_date,
       start_time: event.start_time || "",
       end_time: event.end_time || "",
       member_id: event.member_id || "",
@@ -430,7 +430,7 @@ export default function CalendarPage() {
       {/* Member admin dialog */}
       <Dialog open={showMemberAdmin} onOpenChange={setShowMemberAdmin}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Familiemedlemmer</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Familiemedlemmer</DialogTitle><DialogDescription>Administrer familiemedlemmer og deres farver</DialogDescription></DialogHeader>
           <div className="space-y-3">
             {members.map((m: any) => (
               <div key={m.id} className="flex items-center gap-2">
@@ -463,7 +463,7 @@ export default function CalendarPage() {
       {/* Add/Edit event dialog */}
       <Dialog open={showEventDialog} onOpenChange={setShowEventDialog}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editingEvent ? "Rediger aktivitet" : "Ny aktivitet"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingEvent ? "Rediger aktivitet" : "Ny aktivitet"}</DialogTitle><DialogDescription>Udfyld detaljer for aktiviteten</DialogDescription></DialogHeader>
           <div className="space-y-3">
             <div><Label>Titel</Label><Input value={newEvent.title} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} className="min-h-[44px]" /></div>
             <div><Label>{newEvent.recurrence_type ? "Startdato" : "Dato"}</Label><Input type="date" value={newEvent.event_date} onChange={(e) => setNewEvent({ ...newEvent, event_date: e.target.value })} className="min-h-[44px]" /></div>
@@ -575,6 +575,7 @@ export default function CalendarPage() {
             <DialogTitle>
               {showEventPopup && format(showEventPopup.date, "d. MMMM", { locale: da })} – {members.find((m: any) => m.id === showEventPopup?.memberId)?.name}
             </DialogTitle>
+            <DialogDescription>Aktiviteter for dette medlem på denne dag</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {showEventPopup &&
