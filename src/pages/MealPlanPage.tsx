@@ -106,30 +106,7 @@ export default function MealPlanPage() {
   const { data: mealPlanOrderStatus = {} } = useQuery({
     queryKey: ["meal_plan_order_status", mealPlanIds],
     enabled: mealPlanIds.length > 0,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("shopping_list_items")
-        .select("meal_plan_id, is_ordered, ordered_at")
-        .in("meal_plan_id", mealPlanIds);
-
-      if (!data) return {};
-
-      const statusMap: Record<string, { total: number; ordered: number; latestOrderedAt: string | null }> = {};
-      data.forEach((item: any) => {
-        if (!item.meal_plan_id) return;
-        if (!statusMap[item.meal_plan_id]) {
-          statusMap[item.meal_plan_id] = { total: 0, ordered: 0, latestOrderedAt: null };
-        }
-        statusMap[item.meal_plan_id].total++;
-        if (item.is_ordered) {
-          statusMap[item.meal_plan_id].ordered++;
-          if (!statusMap[item.meal_plan_id].latestOrderedAt || item.ordered_at > statusMap[item.meal_plan_id].latestOrderedAt!) {
-            statusMap[item.meal_plan_id].latestOrderedAt = item.ordered_at;
-          }
-        }
-      });
-      return statusMap;
-    },
+    queryFn: () => fetchMealPlanOrderStatus(mealPlanIds),
   });
 
   const filteredRecipes = useMemo(() => {
@@ -151,22 +128,21 @@ export default function MealPlanPage() {
 
       if (existing) {
         if (recipeId) {
-          await supabase.from("meal_plans").update({ recipe_id: recipeId }).eq("id", existing.id);
+          await updateMealPlan(existing.id, { recipe_id: recipeId });
           await syncShoppingListForMealPlan(recipeId, existing.id, "add");
         } else {
           await syncShoppingListForMealPlan(existing.recipe_id, existing.id, "remove");
-          await supabase.from("meal_plans").delete().eq("id", existing.id);
+          await deleteMealPlan(existing.id);
         }
       } else if (recipeId) {
         const date = new Date(weekStart);
         date.setDate(date.getDate() + dayOfWeek);
-        const { data: newPlan } = await supabase.from("meal_plans").insert({
+        const newPlan = await createMealPlan({
           day_of_week: dayOfWeek,
           recipe_id: recipeId,
           week_start: weekStartStr,
           plan_date: format(date, "yyyy-MM-dd"),
-        }).select().single();
-
+        });
         if (newPlan) {
           await syncShoppingListForMealPlan(recipeId, newPlan.id, "add");
         }
