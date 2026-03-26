@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { getRecipeCategories, createRecipeCategory, updateRecipeCategory, deleteRecipeCategory, renameRecipeCategoryOnRecipes, clearRecipeCategoryOnRecipes, getRecipesPaginated, getProducts, getRecipeIngredients, createRecipe as apiCreateRecipe, updateRecipe as apiUpdateRecipe, deleteRecipe as apiDeleteRecipe, toggleRecipeFavorite, saveRecipeIngredients } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -57,10 +57,7 @@ export default function RecipesPage() {
   // Categories from DB
   const { data: dbCategories = [] } = useQuery({
     queryKey: ["recipe_categories"],
-    queryFn: async () => {
-      const { data } = await supabase.from("recipe_categories").select("*").order("sort_order");
-      return data || [];
-    },
+    queryFn: () => getRecipeCategories(),
   });
 
   const categories = useMemo(() => {
@@ -70,21 +67,12 @@ export default function RecipesPage() {
 
   const { data: recipesData } = useQuery({
     queryKey: ["recipes_paginated", searchQuery, categoryFilter, page],
-    queryFn: async () => {
-      let query = supabase.from("recipes").select("*", { count: "exact" });
-      if (categoryFilter !== "Alle") query = query.eq("category", categoryFilter);
-      if (searchQuery) query = query.ilike("title", `%${searchQuery}%`);
-      const { data, count } = await query.order("created_at", { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-      return { recipes: data || [], total: count || 0 };
-    },
+    queryFn: () => getRecipesPaginated({ search: searchQuery, category: categoryFilter, page, pageSize: PAGE_SIZE }),
   });
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
-    queryFn: async () => {
-      const { data } = await supabase.from("products").select("*, item_categories(name)").order("name");
-      return data || [];
-    },
+    queryFn: () => getProducts(),
   });
 
   const filteredProducts = useMemo(() => {
