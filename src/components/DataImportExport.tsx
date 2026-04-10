@@ -50,8 +50,7 @@ async function parseXlsx(file: File): Promise<any[]> {
 
 // ── delete all from a table ──────────────────────────
 async function deleteAllFrom(table: string) {
-  // Use neq on id to match all rows
-  await supabase.from(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await (supabase.from as any)(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
 }
 
 // ── upsert helpers (individual import) ───────────────
@@ -59,7 +58,7 @@ async function upsertRows(table: string, rows: any[], mapFn: (r: any) => any): P
   let c = 0;
   for (const r of rows) {
     const mapped = mapFn(r);
-    await supabase.from(table).upsert(mapped, { onConflict: "id" });
+    await (supabase.from as any)(table).upsert(mapped, { onConflict: "id" });
     c++;
   }
   return c;
@@ -291,7 +290,7 @@ export function DataImportExport() {
         } else {
           for (const r of rows) {
             const mapped = src.mapRow(r);
-            await supabase.from(src.table).insert(mapped);
+            await (supabase.from as any)(src.table).insert(mapped);
           }
         }
       }
