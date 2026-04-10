@@ -399,8 +399,6 @@ export default function CalendarPage() {
                     </th>
                   );
                 })}
-                  </th>
-                ))}
               </tr>
             </thead>
             <tbody>
