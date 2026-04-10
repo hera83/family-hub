@@ -2,6 +2,7 @@ version: "3.8"
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -19,6 +20,7 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/familyhub
       PORT: "3001"
@@ -32,6 +34,7 @@ services:
       - uploads:/app/uploads
 
   frontend:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend
