@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,11 +14,31 @@ import RecipesPage from "./pages/RecipesPage";
 import CookRecipePage from "./pages/CookRecipePage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
+import { isDatabaseEmpty, seedDemoData } from "@/lib/demoSeed";
 
 const queryClient = new QueryClient();
 
+function AutoSeed() {
+  const ran = useRef(false);
+  useEffect(() => {
+    if (ran.current) return;
+    ran.current = true;
+    isDatabaseEmpty().then((empty) => {
+      if (empty) {
+        console.log("[AutoSeed] Database is empty, seeding demo data...");
+        seedDemoData().then(() => {
+          console.log("[AutoSeed] Demo data seeded.");
+          queryClient.invalidateQueries();
+        });
+      }
+    });
+  }, []);
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <AutoSeed />
     <TooltipProvider>
       <Toaster />
       <Sonner />
