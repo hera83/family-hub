@@ -270,13 +270,14 @@ export default function MealPlanPage() {
           const recipe = getMealForDay(i);
           const plan = mealPlans.find((mp: any) => mp.day_of_week === i);
           const statusBadge = getStatusBadge(plan?.id);
+          const isWeekend = i >= 5; // 5=Lørdag, 6=Søndag
           return (
             <div
               key={day}
               ref={(el) => { dayRefs.current[i] = el; }}
               className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-md select-none ${
                 dragDay === i ? "opacity-50" : ""
-              }`}
+              } ${isWeekend ? "bg-weekend border-weekend-foreground/20" : "bg-card"}`}
               style={{ touchAction: "auto", WebkitUserSelect: "none", userSelect: "none" }}
               draggable={!!recipe}
               onDragStart={() => handleDragStart(i)}
