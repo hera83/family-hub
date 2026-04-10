@@ -423,6 +423,30 @@ export function DataImportExport() {
         </CardContent>
       </Card>
 
+      {/* Reset all */}
+      <Card className="border-destructive/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <RotateCcw className="h-4 w-4" />
+            Nulstil alt
+          </CardTitle>
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3 text-destructive" />
+            Sletter <strong>alt</strong> data og indlæser et demo-datasæt.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="destructive" disabled={isLoading}
+            onClick={() => setConfirmReset(true)}
+            className="w-full min-h-[44px] gap-2"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Nulstil til demo-data
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Confirmation dialog for destructive full import */}
       <AlertDialog open={!!confirmImportAll} onOpenChange={() => setConfirmImportAll(null)}>
         <AlertDialogContent>
@@ -443,6 +467,46 @@ export function DataImportExport() {
               }}
             >
               Slet alt og importér
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation dialog for reset */}
+      <AlertDialog open={confirmReset} onOpenChange={setConfirmReset}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Nulstil hele databasen?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                Dette vil <strong>permanent slette alle dine data</strong>, herunder:
+              </span>
+              <span className="block text-sm">
+                • Alle varer og varekategorier<br />
+                • Alle opskrifter og opskriftkategorier<br />
+                • Alle familiemedlemmer<br />
+                • Alle kalenderbegivenheder<br />
+                • Alle madplaner<br />
+                • Hele indkøbslisten og ordrehistorik
+              </span>
+              <span className="block font-medium text-destructive">
+                Derefter indlæses et demo-datasæt. Handlingen kan ikke fortrydes.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuller</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                handleResetAll();
+                setConfirmReset(false);
+              }}
+            >
+              Ja, slet alt og nulstil
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
