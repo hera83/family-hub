@@ -11,6 +11,7 @@ import ShoppingListPage from "./pages/ShoppingListPage";
 import OrdersPage from "./pages/OrdersPage";
 import RecipesPage from "./pages/RecipesPage";
 import CookRecipePage from "./pages/CookRecipePage";
+import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/ordrer" element={<OrdersPage />} />
             <Route path="/opskrifter" element={<RecipesPage />} />
             <Route path="/cook/:recipeId" element={<CookRecipePage />} />
+            <Route path="/indstillinger" element={<SettingsPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>

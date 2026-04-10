@@ -1,4 +1,4 @@
-import { CalendarDays, UtensilsCrossed, ShoppingCart, Package, BookOpen } from "lucide-react";
+import { CalendarDays, UtensilsCrossed, ShoppingCart, Package, BookOpen, Settings } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -11,6 +11,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 
 const items = [
   { title: "Kalender", url: "/kalender", icon: CalendarDays },
@@ -48,6 +49,29 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <div className="mt-auto pb-4">
+          <Separator className="mb-2" />
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Indstillinger">
+                    <NavLink
+                      to="/indstillinger"
+                      end={false}
+                      className="flex items-center gap-3 px-3 py-3 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors min-h-[48px]"
+                      activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
+                    >
+                      <Settings className="h-5 w-5 shrink-0" />
+                      {!collapsed && <span className="text-sm">Indstillinger</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </div>
       </SidebarContent>
     </Sidebar>
   );
