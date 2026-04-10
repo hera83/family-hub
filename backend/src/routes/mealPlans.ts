@@ -2,6 +2,11 @@ import { Router } from "express";
 import { query, queryOne } from "../db.js";
 const r = Router();
 
+r.get("/all", async (_req, res) => {
+  const rows = await query("SELECT * FROM meal_plans ORDER BY week_start, day_of_week");
+  res.json(rows);
+});
+
 r.get("/", async (req, res) => {
   const { weekStart } = req.query;
   const rows = await query(
