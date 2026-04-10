@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Download, Upload, Database, FileSpreadsheet, AlertTriangle } from "lucide-react";
+import { Download, Upload, Database, FileSpreadsheet, AlertTriangle, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { getRecipeIngredients } from "@/lib/api/recipeIngredients";
 import { supabase } from "@/integrations/supabase/client";
+import { deleteAllData, seedDemoData } from "@/lib/demoSeed";
 
 // ── helpers ──────────────────────────────────────────
 function downloadBlob(blob: Blob, filename: string) {
@@ -48,7 +49,7 @@ async function parseXlsx(file: File): Promise<any[]> {
   return XLSX.utils.sheet_to_json(ws);
 }
 
-// ── delete all from a table ──────────────────────────
+// deleteAllFrom is now imported from demoSeed but we still need a local one for import
 async function deleteAllFrom(table: string) {
   await (supabase.from as any)(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
 }
@@ -181,6 +182,7 @@ export function DataImportExport() {
   const [loading, setLoading] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [confirmImportAll, setConfirmImportAll] = useState<File | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const jsonInputRef = useRef<HTMLInputElement | null>(null);
   const sources = useDataSources();
@@ -305,6 +307,25 @@ export function DataImportExport() {
     }
   };
 
+  const handleResetAll = async () => {
+    setLoading("reset");
+    setProgress(0);
+    try {
+      setProgress(10);
+      await deleteAllData();
+      setProgress(40);
+      await seedDemoData((p) => setProgress(40 + Math.round(p * 0.6)));
+      sources.forEach((s) => s.invalidateKeys.forEach((k) => queryClient.invalidateQueries({ queryKey: [k] })));
+      queryClient.invalidateQueries({ queryKey: ["shopping_list"] });
+      toast({ title: "Nulstillet", description: "Alt data er slettet og demo-data er indlæst." });
+    } catch (e: any) {
+      toast({ title: "Fejl", description: e.message, variant: "destructive" });
+    } finally {
+      setLoading(null);
+      setProgress(0);
+    }
+  };
+
   const isLoading = loading !== null;
 
   return (
@@ -402,6 +423,30 @@ export function DataImportExport() {
         </CardContent>
       </Card>
 
+      {/* Reset all */}
+      <Card className="border-destructive/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <RotateCcw className="h-4 w-4" />
+            Nulstil alt
+          </CardTitle>
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3 text-destructive" />
+            Sletter <strong>alt</strong> data og indlæser et demo-datasæt.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="destructive" disabled={isLoading}
+            onClick={() => setConfirmReset(true)}
+            className="w-full min-h-[44px] gap-2"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Nulstil til demo-data
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Confirmation dialog for destructive full import */}
       <AlertDialog open={!!confirmImportAll} onOpenChange={() => setConfirmImportAll(null)}>
         <AlertDialogContent>
@@ -422,6 +467,46 @@ export function DataImportExport() {
               }}
             >
               Slet alt og importér
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation dialog for reset */}
+      <AlertDialog open={confirmReset} onOpenChange={setConfirmReset}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Nulstil hele databasen?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                Dette vil <strong>permanent slette alle dine data</strong>, herunder:
+              </span>
+              <span className="block text-sm">
+                • Alle varer og varekategorier<br />
+                • Alle opskrifter og opskriftkategorier<br />
+                • Alle familiemedlemmer<br />
+                • Alle kalenderbegivenheder<br />
+                • Alle madplaner<br />
+                • Hele indkøbslisten og ordrehistorik
+              </span>
+              <span className="block font-medium text-destructive">
+                Derefter indlæses et demo-datasæt. Handlingen kan ikke fortrydes.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuller</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                handleResetAll();
+                setConfirmReset(false);
+              }}
+            >
+              Ja, slet alt og nulstil
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
