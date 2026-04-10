@@ -307,6 +307,25 @@ export function DataImportExport() {
     }
   };
 
+  const handleResetAll = async () => {
+    setLoading("reset");
+    setProgress(0);
+    try {
+      setProgress(10);
+      await deleteAllData();
+      setProgress(40);
+      await seedDemoData((p) => setProgress(40 + Math.round(p * 0.6)));
+      sources.forEach((s) => s.invalidateKeys.forEach((k) => queryClient.invalidateQueries({ queryKey: [k] })));
+      queryClient.invalidateQueries({ queryKey: ["shopping_list"] });
+      toast({ title: "Nulstillet", description: "Alt data er slettet og demo-data er indlæst." });
+    } catch (e: any) {
+      toast({ title: "Fejl", description: e.message, variant: "destructive" });
+    } finally {
+      setLoading(null);
+      setProgress(0);
+    }
+  };
+
   const isLoading = loading !== null;
 
   return (
