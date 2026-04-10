@@ -61,12 +61,13 @@ async function sb() {
 async function upsertRows(table: string, rows: any[], mapFn: (r: any) => any): Promise<number> {
   let c = 0;
   if (isLocalMode) {
+    const endpoint = `/${table.replace(/_/g, "-")}`;
     for (const r of rows) {
       const mapped = mapFn(r);
       if (mapped.id) {
-        try { await api.patch(`/${table.replace("_", "-")}/${mapped.id}`, mapped); } catch { await api.post(`/${table.replace("_", "-")}`, mapped); }
+        try { await api.patch(`${endpoint}/${mapped.id}`, mapped); } catch { await api.post(endpoint, mapped); }
       } else {
-        await api.post(`/${table.replace("_", "-")}`, mapped);
+        await api.post(endpoint, mapped);
       }
       c++;
     }
