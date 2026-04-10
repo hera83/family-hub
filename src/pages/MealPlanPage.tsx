@@ -287,7 +287,7 @@ export default function MealPlanPage() {
               onTouchEnd={handleTouchEnd}
               onClick={() => !recipe && setSelectingDay(i)}
             >
-              <div className="bg-muted px-3 py-2 text-sm font-medium text-center">
+              <div className={`px-3 py-2 text-sm font-medium text-center ${isWeekend ? "bg-weekend-foreground/10 text-weekend-foreground" : "bg-muted"}`}>
                 {day}
               </div>
               {recipe ? (
