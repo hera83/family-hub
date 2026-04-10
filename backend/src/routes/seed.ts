@@ -182,16 +182,57 @@ r.post("/seed", async (_req, res) => {
 });
 
 // Reset = delete all + seed
-r.post("/reset", async (req, res) => {
-  for (const table of DELETE_ORDER) {
-    await query(`DELETE FROM ${table}`);
+r.post("/reset", async (_req, res) => {
+  try {
+    for (const table of DELETE_ORDER) {
+      await query(`DELETE FROM ${table}`);
+    }
+    // Re-use seed logic inline
+    const catIds: string[] = [];
+    for (const c of DEMO_ITEM_CATEGORIES) {
+      const row = await queryOne("INSERT INTO item_categories (name, sort_order) VALUES ($1, $2) RETURNING id", [c.name, c.sort_order]);
+      catIds.push(row.id);
+    }
+    for (const c of DEMO_RECIPE_CATEGORIES) {
+      await query("INSERT INTO recipe_categories (name, sort_order) VALUES ($1, $2)", [c.name, c.sort_order]);
+    }
+    for (const m of DEMO_FAMILY_MEMBERS) {
+      await query("INSERT INTO family_members (name, color) VALUES ($1, $2)", [m.name, m.color]);
+    }
+    const prodIds: string[] = [];
+    for (const p of DEMO_PRODUCTS) {
+      const row = await queryOne(
+        "INSERT INTO products (name, unit, category_id, is_staple, is_manual, price) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
+        [p.name, p.unit, catIds[p.catIdx] || null, p.is_staple || false, true, p.price ?? null]
+      );
+      prodIds.push(row.id);
+    }
+    for (const dr of DEMO_RECIPES) {
+      const row = await queryOne(
+        "INSERT INTO recipes (title, description, instructions, category, prep_time, wait_time, is_manual) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id",
+        [dr.title, dr.description, dr.instructions, dr.category, dr.prep_time, dr.wait_time ?? null, true]
+      );
+      for (const ing of dr.ingredients) {
+        await query(
+          "INSERT INTO recipe_ingredients (recipe_id, product_id, name, quantity, unit) VALUES ($1,$2,$3,$4,$5)",
+          [row.id, prodIds[ing.prodIdx] || null, DEMO_PRODUCTS[ing.prodIdx]?.name || "", ing.quantity, ing.unit]
+        );
+      }
+    }
+    const today = new Date();
+    const dayStr = (offset: number) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() + offset);
+      return d.toISOString().slice(0, 10);
+    };
+    await query(
+      "INSERT INTO calendar_events (title, event_date, start_time, end_time) VALUES ($1,$2,$3,$4),($5,$6,$7,$8),($9,$10,$11,$12)",
+      ["Indkøb", dayStr(1), "10:00", "11:00", "Madlavning", dayStr(2), "17:00", "18:30", "Familieaften", dayStr(3), "18:00", "20:00"]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
-  // Forward to seed logic by calling the handler inline
-  // We'll just re-use the seed endpoint via a local fetch or duplicate logic
-  // Simplest: redirect internally
-  req.url = "/seed";
-  req.method = "POST";
-  r.handle(req, res, () => {});
 });
 
 export { r as seedRouter };
