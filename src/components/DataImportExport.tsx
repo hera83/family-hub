@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Download, Upload, Database, FileSpreadsheet, AlertTriangle } from "lucide-react";
+import { Download, Upload, Database, FileSpreadsheet, AlertTriangle, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { getRecipeIngredients } from "@/lib/api/recipeIngredients";
 import { supabase } from "@/integrations/supabase/client";
+import { deleteAllData, seedDemoData } from "@/lib/demoSeed";
 
 // ── helpers ──────────────────────────────────────────
 function downloadBlob(blob: Blob, filename: string) {
@@ -48,7 +49,7 @@ async function parseXlsx(file: File): Promise<any[]> {
   return XLSX.utils.sheet_to_json(ws);
 }
 
-// ── delete all from a table ──────────────────────────
+// deleteAllFrom is now imported from demoSeed but we still need a local one for import
 async function deleteAllFrom(table: string) {
   await (supabase.from as any)(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
 }
