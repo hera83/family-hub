@@ -21,7 +21,8 @@ import {
   getMealPlansAll,
 } from "@/lib/api";
 import { getRecipeIngredients } from "@/lib/api/recipeIngredients";
-import { supabase } from "@/integrations/supabase/client";
+import { isLocalMode } from "@/config/env";
+import { api } from "@/lib/api/client";
 import { deleteAllData, seedDemoData } from "@/lib/demoSeed";
 
 // ── helpers ──────────────────────────────────────────
@@ -49,18 +50,33 @@ async function parseXlsx(file: File): Promise<any[]> {
   return XLSX.utils.sheet_to_json(ws);
 }
 
-// deleteAllFrom is now imported from demoSeed but we still need a local one for import
-async function deleteAllFrom(table: string) {
-  await (supabase.from as any)(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+// ── Lazy Supabase import ─────────────────────────────
+let _supabase: any = null;
+async function sb() {
+  if (!_supabase) { const mod = await import("@/integrations/supabase/client"); _supabase = mod.supabase; }
+  return _supabase;
 }
 
 // ── upsert helpers (individual import) ───────────────
 async function upsertRows(table: string, rows: any[], mapFn: (r: any) => any): Promise<number> {
   let c = 0;
-  for (const r of rows) {
-    const mapped = mapFn(r);
-    await (supabase.from as any)(table).upsert(mapped, { onConflict: "id" });
-    c++;
+  if (isLocalMode) {
+    for (const r of rows) {
+      const mapped = mapFn(r);
+      if (mapped.id) {
+        try { await api.patch(`/${table.replace("_", "-")}/${mapped.id}`, mapped); } catch { await api.post(`/${table.replace("_", "-")}`, mapped); }
+      } else {
+        await api.post(`/${table.replace("_", "-")}`, mapped);
+      }
+      c++;
+    }
+  } else {
+    const s = await sb();
+    for (const r of rows) {
+      const mapped = mapFn(r);
+      await (s.from as any)(table).upsert(mapped, { onConflict: "id" });
+      c++;
+    }
   }
   return c;
 }
