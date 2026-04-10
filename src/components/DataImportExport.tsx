@@ -298,17 +298,9 @@ export function DataImportExport() {
       const text = await file.text();
       const data = JSON.parse(text) as Record<string, any[]>;
 
-      // Step 1: Delete all in reverse dependency order
-      const deleteOrder = [
-        "shopping_list_items", "order_lines", "orders",
-        "meal_plans", "calendar_events", "recipe_ingredients",
-        "recipes", "products", "family_members",
-        "recipe_categories", "item_categories",
-      ];
+      // Step 1: Delete all
       setProgress(5);
-      for (const table of deleteOrder) {
-        await deleteAllFrom(table);
-      }
+      await deleteAllData();
       setProgress(20);
 
       // Step 2: Insert in dependency order
@@ -324,10 +316,17 @@ export function DataImportExport() {
 
         if (src.importFn) {
           await src.importFn(rows);
-        } else {
+        } else if (isLocalMode) {
           for (const r of rows) {
             const mapped = src.mapRow(r);
-            await (supabase.from as any)(src.table).insert(mapped);
+            const endpoint = `/${src.table.replace(/_/g, "-")}`;
+            await api.post(endpoint, mapped);
+          }
+        } else {
+          const s = await sb();
+          for (const r of rows) {
+            const mapped = src.mapRow(r);
+            await (s.from as any)(src.table).insert(mapped);
           }
         }
       }
