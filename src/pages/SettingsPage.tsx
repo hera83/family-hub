@@ -384,19 +384,7 @@ export default function SettingsPage() {
           </div>
         </TabsContent>
       </Tabs>
-        </div>
-
-        {/* Right: Data import/export */}
-        <div>
-          <div className="flex gap-1 border-b border-border mb-4">
-            <button className="px-4 py-2.5 text-sm font-medium transition-colors relative min-h-[44px] rounded-t-lg text-primary bg-primary/5">
-              Data
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
-            </button>
-          </div>
-          <DataImportExport />
-        </div>
-      </div>
+      )}
 
       {/* Delete recipe category confirmation */}
       <AlertDialog open={!!deletingRecipeCat} onOpenChange={(open) => { if (!open) setDeletingRecipeCat(null); }}>
