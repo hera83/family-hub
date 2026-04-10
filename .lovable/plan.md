@@ -1,47 +1,73 @@
 
 
-## Plan: Centraliseret Indstillinger-side
+## Plan: Data Tab med Import/Eksport i Indstillinger
 
 ### Oversigt
-Flytte al administration (varekategorier, produkter, opskriftkategorier, familiemedlemmer) ud af de enkelte sider og samle det i en ny **Indstillinger**-side tilgængelig via sidebar med et tandhjulsikon i bunden.
+Tilføje et "Data" tab i højre side af indstillingssiden med import/eksport-funktionalitet for alle datakilder. De eksisterende 4 tabs forbliver i venstre side.
 
-### Struktur
-
+### Layout
 ```text
-/indstillinger
-├── Tabs
-│   ├── Varekategorier    (fra ShoppingListPage)
-│   ├── Varer/Produkter   (fra ShoppingListPage)
-│   ├── Opskriftkategorier (fra RecipesPage)
-│   └── Familiemedlemmer  (fra CalendarPage)
+┌─────────────────────────────────────────────────────┐
+│ Indstillinger                                       │
+├────────────────────────────┬────────────────────────┤
+│ Varekategorier | Varer |   │                  Data  │
+│ Opskriftkategorier |       │                        │
+│ Familiemedlemmer           │                        │
+├────────────────────────────┼────────────────────────┤
+│                            │ Individuel eksport/    │
+│  (eksisterende indhold)    │ import (Excel):        │
+│                            │  - Varekategorier      │
+│                            │  - Varer               │
+│                            │  - Opskriftkategorier  │
+│                            │  - Opskrifter          │
+│                            │  - Familiemedlemmer    │
+│                            │  - Kalenderbegivenheder│
+│                            │  - Madplaner           │
+│                            │                        │
+│                            │ Samlet backup (JSON):  │
+│                            │  - Eksportér alt       │
+│                            │  - Importér alt        │
+└────────────────────────────┴────────────────────────┘
 ```
 
-### Ændringer
+### Datakilder der dækkes
+1. **Varekategorier** (item_categories)
+2. **Varer/Produkter** (products)
+3. **Opskriftkategorier** (recipe_categories)
+4. **Opskrifter** (recipes + recipe_ingredients)
+5. **Familiemedlemmer** (family_members)
+6. **Kalenderbegivenheder** (calendar_events)
+7. **Madplaner** (meal_plans)
 
-**1. Ny fil: `src/pages/SettingsPage.tsx`**
-- Opretter en side med 4 tabs (Varekategorier, Varer, Opskriftkategorier, Familiemedlemmer)
-- Flytter al CRUD-logik og UI fra de eksisterende admin-dialogs hertil
-- Inkluderer ProductForm-komponenten (flyttes eller genbruges)
-- Samme søgefunktionalitet, inline-redigering og oprettelse som i dag
+### Funktionalitet
 
-**2. Opdater `src/App.tsx`**
-- Tilføj route: `/indstillinger` → `SettingsPage`
+**Individuel Excel eksport/import:**
+- Hver datakilde har en "Eksportér" og "Importér" knap
+- Eksport genererer en `.xlsx` fil via `xlsx` npm-pakken (klientside)
+- Import parser uploadet `.xlsx` og upsert'er data via eksisterende API-funktioner
+- Validering af kolonner ved import med fejlrapportering
 
-**3. Opdater `src/components/AppSidebar.tsx`**
-- Tilføj "Indstillinger" med `Settings`-ikon i bunden af menuen (adskilt fra de øvrige menupunkter)
+**Samlet JSON backup:**
+- "Eksportér alt" henter alle tabeller og downloader som én `.json` fil
+- "Importér alt" uploader `.json` og indsætter data i korrekt rækkefølge (kategorier først, derefter afhængige data)
 
-**4. Oprydning i eksisterende sider**
-- **ShoppingListPage**: Fjern admin-dialog (kategorier + varer tabs), Settings-knap, ProductForm-komponent, og al tilhørende state/mutations for admin
-- **RecipesPage**: Fjern kategori-admin-dialog, Settings-knap og tilhørende state
-- **CalendarPage**: Fjern familiemedlem-admin-dialog og tilhørende state; behold familiemedlemmer som data til kalender-funktionalitet
+### Tekniske ændringer
 
-### Design
-- Tabs-layout på selve siden (ikke i en dialog) for bedre plads og overblik
-- Konsistent med eksisterende styling (min-h-[44px] touch targets, søgefelter, inline edit/delete)
-- Sidebar-ikonet placeres nederst med en separator for visuel adskillelse
+**1. Installer `xlsx` pakke** til klientside Excel-parsing/generering
 
-### Teknisk
-- Alle API-funktioner genbruges uændret (getProducts, getItemCategories, etc.)
-- QueryClient-invalidation forbliver den samme
-- ProductForm-komponenten flyttes til `src/components/ProductForm.tsx` for genbrug
+**2. Opdater `src/pages/SettingsPage.tsx`**
+- Omstrukturér layout: to-kolonne grid med tabs i venstre og Data-panel i højre
+- På mobil stacker de vertikalt (Data-panelet under)
+
+**3. Ny fil: `src/components/DataImportExport.tsx`**
+- Selvstændig komponent med al import/eksport-logik
+- Bruger eksisterende API-funktioner fra `src/lib/api/`
+- Sektion for individuel Excel import/eksport per datakilde
+- Sektion for samlet JSON backup
+- Progress-indikator ved import
+- Toast-feedback ved succes/fejl
+
+**4. Tilføj manglende API-funktioner**
+- `getCalendarEventsAll()` - hent alle events uden datofilter (til eksport)
+- `getMealPlansAll()` - hent alle madplaner (til eksport)
 
