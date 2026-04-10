@@ -78,7 +78,8 @@ export default function SettingsPage() {
 
   // Item categories state
   const [categorySearch, setCategorySearch] = useState("");
-  const [newCategory, setNewCategory] = useState({ name: "", sort_order: 0 });
+  const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState<any>(null);
 
   // Products state
@@ -93,11 +94,13 @@ export default function SettingsPage() {
 
   // Recipe categories state
   const [recipeCatSearch, setRecipeCatSearch] = useState("");
-  const [newRecipeCat, setNewRecipeCat] = useState("");
+  const [showCreateRecipeCat, setShowCreateRecipeCat] = useState(false);
+  const [newRecipeCatName, setNewRecipeCatName] = useState("");
   const [editingRecipeCat, setEditingRecipeCat] = useState<{ id: string; value: string } | null>(null);
   const [deletingRecipeCat, setDeletingRecipeCat] = useState<{ id: string; name: string } | null>(null);
 
   // Family members state
+  const [showCreateMember, setShowCreateMember] = useState(false);
   const [newMember, setNewMember] = useState({ name: "", color: MUTED_COLORS[0] });
   const [editingMember, setEditingMember] = useState<any>(null);
 
@@ -110,7 +113,7 @@ export default function SettingsPage() {
   // === Item Categories mutations ===
   const addItemCat = useMutation({
     mutationFn: (cat: { name: string; sort_order: number }) => createItemCategory(cat),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["item_categories"] }); setNewCategory({ name: "", sort_order: itemCategories.length + 1 }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["item_categories"] }); setNewCategoryName(""); setShowCreateCategory(false); },
   });
   const updateItemCat = useMutation({
     mutationFn: async ({ id, ...data }: any) => updateItemCategory(id, data),
@@ -244,9 +247,14 @@ export default function SettingsPage() {
 
         {/* === Item Categories === */}
         <TabsContent value="item-categories" className="space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Søg kategori..." value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} className="pl-10 min-h-[44px]" />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Søg kategori..." value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} className="pl-10 min-h-[44px]" />
+            </div>
+            <Button size="icon" onClick={() => { setNewCategoryName(""); setShowCreateCategory(true); }} className="min-h-[44px] min-w-[44px]">
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
           <div className="space-y-2">
             {filteredItemCategories.map((c: any) => (
@@ -267,10 +275,6 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-2 pt-2 border-t">
-            <Input placeholder="Ny kategori..." value={newCategory.name} onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })} className="flex-1 min-h-[44px]" />
-            <Button onClick={() => newCategory.name && addItemCat.mutate({ ...newCategory, sort_order: itemCategories.length + 1 })} disabled={!newCategory.name} className="min-h-[44px]">Tilføj</Button>
-          </div>
         </TabsContent>
 
         {/* === Products === */}
@@ -280,8 +284,8 @@ export default function SettingsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Søg vare..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} className="pl-10 min-h-[44px]" />
             </div>
-            <Button onClick={() => { resetNewProduct(); setShowCreateProduct(true); }} className="min-h-[44px] gap-2">
-              <Plus className="h-4 w-4" /> Opret vare
+            <Button size="icon" onClick={() => { resetNewProduct(); setShowCreateProduct(true); }} className="min-h-[44px] min-w-[44px]">
+              <Plus className="h-4 w-4" />
             </Button>
           </div>
           <div className="space-y-2">
@@ -310,9 +314,14 @@ export default function SettingsPage() {
 
         {/* === Recipe Categories === */}
         <TabsContent value="recipe-categories" className="space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Søg kategori..." value={recipeCatSearch} onChange={(e) => setRecipeCatSearch(e.target.value)} className="pl-10 min-h-[44px]" />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Søg kategori..." value={recipeCatSearch} onChange={(e) => setRecipeCatSearch(e.target.value)} className="pl-10 min-h-[44px]" />
+            </div>
+            <Button size="icon" onClick={() => { setNewRecipeCatName(""); setShowCreateRecipeCat(true); }} className="min-h-[44px] min-w-[44px]">
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
           <div className="space-y-2">
             {filteredRecipeCategories.map((cat: any) => (
@@ -341,21 +350,15 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-2 pt-2 border-t">
-            <Input placeholder="Ny kategori..." value={newRecipeCat} onChange={(e) => setNewRecipeCat(e.target.value)} className="flex-1 min-h-[44px]" />
-            <Button onClick={async () => {
-              if (newRecipeCat.trim()) {
-                const maxOrder = recipeCategories.length > 0 ? Math.max(...recipeCategories.map((c: any) => c.sort_order)) : 0;
-                await createRecipeCategory({ name: newRecipeCat.trim(), sort_order: maxOrder + 1 });
-                queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
-                setNewRecipeCat("");
-              }
-            }} disabled={!newRecipeCat.trim()} className="min-h-[44px]">Tilføj</Button>
-          </div>
         </TabsContent>
 
         {/* === Family Members === */}
         <TabsContent value="family-members" className="space-y-3">
+          <div className="flex justify-end">
+            <Button size="icon" onClick={() => { setNewMember({ name: "", color: MUTED_COLORS[members.length % MUTED_COLORS.length] }); setShowCreateMember(true); }} className="min-h-[44px] min-w-[44px]">
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
           <div className="space-y-2">
             {members.map((m: any) => (
               <div key={m.id} className="flex items-center gap-2 p-2 rounded-lg border bg-card">
@@ -376,11 +379,6 @@ export default function SettingsPage() {
                 )}
               </div>
             ))}
-          </div>
-          <div className="flex items-center gap-2 pt-2 border-t">
-            <input type="color" value={newMember.color} onChange={(e) => setNewMember({ ...newMember, color: e.target.value })} className="w-8 h-8 rounded border-0 cursor-pointer" />
-            <Input placeholder="Nyt medlem..." value={newMember.name} onChange={(e) => setNewMember({ ...newMember, name: e.target.value })} className="flex-1 min-h-[44px]" />
-            <Button onClick={() => newMember.name && addMemberMut.mutate(newMember)} disabled={!newMember.name} className="min-h-[44px]">Tilføj</Button>
           </div>
         </TabsContent>
       </Tabs>
@@ -427,6 +425,56 @@ export default function SettingsPage() {
           {editingProduct && <ProductForm values={editingProduct} onChange={setEditingProduct} categories={itemCategories} />}
           <DialogFooter>
             <Button onClick={() => editingProduct && updateProductMut.mutate(editingProduct)} className="min-h-[44px]">Gem ændringer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create item category dialog */}
+      <Dialog open={showCreateCategory} onOpenChange={setShowCreateCategory}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Opret ny varekategori</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Kategorinavn</Label><Input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="F.eks. Mejeri" className="min-h-[44px]" autoFocus /></div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => newCategoryName.trim() && addItemCat.mutate({ name: newCategoryName.trim(), sort_order: itemCategories.length + 1 })} disabled={!newCategoryName.trim()} className="min-h-[44px]">Opret</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create recipe category dialog */}
+      <Dialog open={showCreateRecipeCat} onOpenChange={setShowCreateRecipeCat}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Opret ny opskriftkategori</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Kategorinavn</Label><Input value={newRecipeCatName} onChange={(e) => setNewRecipeCatName(e.target.value)} placeholder="F.eks. Dessert" className="min-h-[44px]" autoFocus /></div>
+          </div>
+          <DialogFooter>
+            <Button onClick={async () => {
+              if (newRecipeCatName.trim()) {
+                const maxOrder = recipeCategories.length > 0 ? Math.max(...recipeCategories.map((c: any) => c.sort_order)) : 0;
+                await createRecipeCategory({ name: newRecipeCatName.trim(), sort_order: maxOrder + 1 });
+                queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
+                setNewRecipeCatName("");
+                setShowCreateRecipeCat(false);
+              }
+            }} disabled={!newRecipeCatName.trim()} className="min-h-[44px]">Opret</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create family member dialog */}
+      <Dialog open={showCreateMember} onOpenChange={setShowCreateMember}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Tilføj familiemedlem</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <input type="color" value={newMember.color} onChange={(e) => setNewMember({ ...newMember, color: e.target.value })} className="w-10 h-10 rounded border-0 cursor-pointer" />
+              <div className="flex-1"><Label>Navn</Label><Input value={newMember.name} onChange={(e) => setNewMember({ ...newMember, name: e.target.value })} placeholder="F.eks. Mor" className="min-h-[44px]" autoFocus /></div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => { if (newMember.name) { addMemberMut.mutate(newMember); setShowCreateMember(false); }}} disabled={!newMember.name} className="min-h-[44px]">Tilføj</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
