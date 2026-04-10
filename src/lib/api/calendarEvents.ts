@@ -43,6 +43,13 @@ export async function upsertCalendarEvent(event: any) {
   }
 }
 
+export async function getCalendarEventsAll() {
+  if (isLocalMode) return api.get<any[]>("/calendar-events?type=all");
+  const s = await sb();
+  const { data } = await s.from("calendar_events").select("*").order("event_date");
+  return data || [];
+}
+
 export async function deleteCalendarEvent(id: string) {
   if (isLocalMode) return api.delete(`/calendar-events/${id}`);
   const s = await sb();
