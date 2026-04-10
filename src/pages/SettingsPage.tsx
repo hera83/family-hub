@@ -190,17 +190,39 @@ export default function SettingsPage() {
     return recipeCategories.filter((c: any) => c.name.toLowerCase().includes(recipeCatSearch.toLowerCase()));
   }, [recipeCategories, recipeCatSearch]);
 
+  const [activeTab, setActiveTab] = useState("item-categories");
+
+  const tabs = [
+    { value: "item-categories", label: "Varekategorier" },
+    { value: "products", label: "Varer" },
+    { value: "recipe-categories", label: "Opskriftkategorier" },
+    { value: "family-members", label: "Familiemedlemmer" },
+  ];
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <h2 className="text-xl font-semibold">Indstillinger</h2>
 
-      <Tabs defaultValue="item-categories" className="w-full">
-        <TabsList className="w-full grid grid-cols-4">
-          <TabsTrigger value="item-categories" className="min-h-[44px] text-xs sm:text-sm">Varekategorier</TabsTrigger>
-          <TabsTrigger value="products" className="min-h-[44px] text-xs sm:text-sm">Varer</TabsTrigger>
-          <TabsTrigger value="recipe-categories" className="min-h-[44px] text-xs sm:text-sm">Opskriftkategorier</TabsTrigger>
-          <TabsTrigger value="family-members" className="min-h-[44px] text-xs sm:text-sm">Familiemedlemmer</TabsTrigger>
-        </TabsList>
+      <div className="flex gap-1 border-b border-border">
+        {tabs.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setActiveTab(tab.value)}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors relative min-h-[44px] rounded-t-lg ${
+              activeTab === tab.value
+                ? "text-primary bg-primary/5"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            {tab.label}
+            {activeTab === tab.value && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
 
         {/* === Item Categories === */}
         <TabsContent value="item-categories" className="space-y-3">

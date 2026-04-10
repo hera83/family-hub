@@ -51,7 +51,6 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <div className="mt-auto pb-4">
-          <Separator className="mb-2" />
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
