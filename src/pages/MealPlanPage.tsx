@@ -293,9 +293,9 @@ export default function MealPlanPage() {
               {recipe ? (
                 <div className="p-2 space-y-2">
                   {recipe.image_url ? (
-                    <img src={recipe.image_url} alt={recipe.title} className="w-full h-24 object-cover rounded" />
+                    <img src={recipe.image_url} alt={recipe.title} className="w-full h-24 object-cover rounded cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/cook/${plan?.recipe_id}`); }} />
                   ) : (
-                    <div className="w-full h-24 bg-muted rounded flex items-center justify-center">
+                    <div className="w-full h-24 bg-muted rounded flex items-center justify-center cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/cook/${plan?.recipe_id}`); }}>
                       <UtensilsCrossed className="h-8 w-8 text-muted-foreground" />
                     </div>
                   )}
