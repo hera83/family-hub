@@ -27,6 +27,13 @@ export async function updateMealPlan(id: string, data: any) {
   await s.from("meal_plans").update(data).eq("id", id);
 }
 
+export async function getMealPlansAll() {
+  if (isLocalMode) return api.get<any[]>("/meal-plans/all");
+  const s = await sb();
+  const { data } = await s.from("meal_plans").select("*").order("week_start");
+  return data || [];
+}
+
 export async function deleteMealPlan(id: string) {
   if (isLocalMode) return api.delete(`/meal-plans/${id}`);
   const s = await sb();
