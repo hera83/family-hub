@@ -11,7 +11,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
+
 
 const items = [
   { title: "Kalender", url: "/kalender", icon: CalendarDays },
@@ -51,7 +51,6 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <div className="mt-auto pb-4">
-          <Separator className="mb-2" />
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
