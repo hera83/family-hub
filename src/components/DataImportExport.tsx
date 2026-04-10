@@ -15,7 +15,7 @@ import {
   getCalendarEventsAll, upsertCalendarEvent,
   getMealPlansAll, createMealPlan,
 } from "@/lib/api";
-import { getRecipeIngredients } from "@/lib/api/recipeIngredients";
+import { getRecipeIngredients, saveRecipeIngredients } from "@/lib/api/recipeIngredients";
 
 // ── helpers ──────────────────────────────────────────
 function downloadBlob(blob: Blob, filename: string) {
@@ -115,11 +115,14 @@ function useDataSources(): DataSource[] {
           const { ingredients, id, created_at, updated_at, ...recipe } = r;
           const created = await createRecipe(recipe);
           if (created?.id && Array.isArray(ingredients)) {
-            const { createRecipeIngredient } = await import("@/lib/api/recipeIngredients");
-            for (const ing of ingredients) {
-              const { id: _id, created_at: _ca, recipe_id: _ri, ...rest } = ing;
-              await createRecipeIngredient({ ...rest, recipe_id: created.id });
-            }
+            const mapped = ingredients.map((ing: any) => ({
+              product_id: ing.product_id || null,
+              product_name: ing.name || ing.product_name || "",
+              quantity: Number(ing.quantity) || 1,
+              unit: ing.unit || "stk",
+              is_staple: ing.is_staple === true || ing.is_staple === "true",
+            }));
+            if (mapped.length) await saveRecipeIngredients(created.id, mapped);
           }
           c++;
         }
