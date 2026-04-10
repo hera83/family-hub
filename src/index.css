@@ -55,6 +55,9 @@
     --success-foreground: 0 0% 98%;
     --warning: 40 80% 55%;
     --warning-foreground: 40 80% 15%;
+
+    --weekend: 220 15% 93%;
+    --weekend-foreground: 220 15% 40%;
   }
 
   .dark {
@@ -99,6 +102,9 @@
     --success-foreground: 0 0% 95%;
     --warning: 40 70% 50%;
     --warning-foreground: 40 70% 10%;
+
+    --weekend: 220 15% 15%;
+    --weekend-foreground: 220 10% 60%;
   }
 }
 

@@ -65,6 +65,10 @@ export default {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
         },
+        weekend: {
+          DEFAULT: "hsl(var(--weekend))",
+          foreground: "hsl(var(--weekend-foreground))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
