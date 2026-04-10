@@ -113,7 +113,7 @@ export default function SettingsPage() {
   // === Item Categories mutations ===
   const addItemCat = useMutation({
     mutationFn: (cat: { name: string; sort_order: number }) => createItemCategory(cat),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["item_categories"] }); setNewCategory({ name: "", sort_order: itemCategories.length + 1 }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["item_categories"] }); setNewCategoryName(""); setShowCreateCategory(false); },
   });
   const updateItemCat = useMutation({
     mutationFn: async ({ id, ...data }: any) => updateItemCategory(id, data),
