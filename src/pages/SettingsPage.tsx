@@ -78,7 +78,8 @@ export default function SettingsPage() {
 
   // Item categories state
   const [categorySearch, setCategorySearch] = useState("");
-  const [newCategory, setNewCategory] = useState({ name: "", sort_order: 0 });
+  const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState<any>(null);
 
   // Products state
@@ -93,11 +94,13 @@ export default function SettingsPage() {
 
   // Recipe categories state
   const [recipeCatSearch, setRecipeCatSearch] = useState("");
-  const [newRecipeCat, setNewRecipeCat] = useState("");
+  const [showCreateRecipeCat, setShowCreateRecipeCat] = useState(false);
+  const [newRecipeCatName, setNewRecipeCatName] = useState("");
   const [editingRecipeCat, setEditingRecipeCat] = useState<{ id: string; value: string } | null>(null);
   const [deletingRecipeCat, setDeletingRecipeCat] = useState<{ id: string; name: string } | null>(null);
 
   // Family members state
+  const [showCreateMember, setShowCreateMember] = useState(false);
   const [newMember, setNewMember] = useState({ name: "", color: MUTED_COLORS[0] });
   const [editingMember, setEditingMember] = useState<any>(null);
 
