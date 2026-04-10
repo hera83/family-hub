@@ -428,6 +428,56 @@ export default function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Create item category dialog */}
+      <Dialog open={showCreateCategory} onOpenChange={setShowCreateCategory}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Opret ny varekategori</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Kategorinavn</Label><Input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="F.eks. Mejeri" className="min-h-[44px]" autoFocus /></div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => newCategoryName.trim() && addItemCat.mutate({ name: newCategoryName.trim(), sort_order: itemCategories.length + 1 })} disabled={!newCategoryName.trim()} className="min-h-[44px]">Opret</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create recipe category dialog */}
+      <Dialog open={showCreateRecipeCat} onOpenChange={setShowCreateRecipeCat}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Opret ny opskriftkategori</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Kategorinavn</Label><Input value={newRecipeCatName} onChange={(e) => setNewRecipeCatName(e.target.value)} placeholder="F.eks. Dessert" className="min-h-[44px]" autoFocus /></div>
+          </div>
+          <DialogFooter>
+            <Button onClick={async () => {
+              if (newRecipeCatName.trim()) {
+                const maxOrder = recipeCategories.length > 0 ? Math.max(...recipeCategories.map((c: any) => c.sort_order)) : 0;
+                await createRecipeCategory({ name: newRecipeCatName.trim(), sort_order: maxOrder + 1 });
+                queryClient.invalidateQueries({ queryKey: ["recipe_categories"] });
+                setNewRecipeCatName("");
+                setShowCreateRecipeCat(false);
+              }
+            }} disabled={!newRecipeCatName.trim()} className="min-h-[44px]">Opret</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create family member dialog */}
+      <Dialog open={showCreateMember} onOpenChange={setShowCreateMember}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Tilføj familiemedlem</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <input type="color" value={newMember.color} onChange={(e) => setNewMember({ ...newMember, color: e.target.value })} className="w-10 h-10 rounded border-0 cursor-pointer" />
+              <div className="flex-1"><Label>Navn</Label><Input value={newMember.name} onChange={(e) => setNewMember({ ...newMember, name: e.target.value })} placeholder="F.eks. Mor" className="min-h-[44px]" autoFocus /></div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => { if (newMember.name) { addMemberMut.mutate(newMember); setShowCreateMember(false); }}} disabled={!newMember.name} className="min-h-[44px]">Tilføj</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
