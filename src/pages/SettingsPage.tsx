@@ -10,6 +10,7 @@ import { ImageUpload } from "@/components/ImageUpload";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Plus, Pencil, Trash2, Search, Star } from "lucide-react";
+import { DataImportExport } from "@/components/DataImportExport";
 import {
   getItemCategories, createItemCategory, updateItemCategory, deleteItemCategory,
   getProducts, createProduct, updateProduct, deleteProduct,
@@ -203,26 +204,29 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Indstillinger</h2>
 
-      <div className="flex gap-1 border-b border-border">
-        {tabs.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setActiveTab(tab.value)}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors relative min-h-[44px] rounded-t-lg ${
-              activeTab === tab.value
-                ? "text-primary bg-primary/5"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-          >
-            {tab.label}
-            {activeTab === tab.value && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
-            )}
-          </button>
-        ))}
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
+        {/* Left: Admin tabs */}
+        <div>
+          <div className="flex gap-1 border-b border-border mb-4">
+            {tabs.map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setActiveTab(tab.value)}
+                className={`px-4 py-2.5 text-sm font-medium transition-colors relative min-h-[44px] rounded-t-lg ${
+                  activeTab === tab.value
+                    ? "text-primary bg-primary/5"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                {tab.label}
+                {activeTab === tab.value && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
 
         {/* === Item Categories === */}
         <TabsContent value="item-categories" className="space-y-3">
@@ -366,6 +370,19 @@ export default function SettingsPage() {
           </div>
         </TabsContent>
       </Tabs>
+        </div>
+
+        {/* Right: Data import/export */}
+        <div>
+          <div className="flex gap-1 border-b border-border mb-4">
+            <button className="px-4 py-2.5 text-sm font-medium transition-colors relative min-h-[44px] rounded-t-lg text-primary bg-primary/5">
+              Data
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+            </button>
+          </div>
+          <DataImportExport />
+        </div>
+      </div>
 
       {/* Delete recipe category confirmation */}
       <AlertDialog open={!!deletingRecipeCat} onOpenChange={(open) => { if (!open) setDeletingRecipeCat(null); }}>
