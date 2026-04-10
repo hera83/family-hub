@@ -183,6 +183,7 @@ export function DataImportExport() {
   const [progress, setProgress] = useState(0);
   const [confirmImportAll, setConfirmImportAll] = useState<File | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const jsonInputRef = useRef<HTMLInputElement | null>(null);
   const sources = useDataSources();
 
