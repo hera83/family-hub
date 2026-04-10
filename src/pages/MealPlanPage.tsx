@@ -270,13 +270,14 @@ export default function MealPlanPage() {
           const recipe = getMealForDay(i);
           const plan = mealPlans.find((mp: any) => mp.day_of_week === i);
           const statusBadge = getStatusBadge(plan?.id);
+          const isWeekend = i >= 5; // 5=Lørdag, 6=Søndag
           return (
             <div
               key={day}
               ref={(el) => { dayRefs.current[i] = el; }}
               className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-md select-none ${
                 dragDay === i ? "opacity-50" : ""
-              }`}
+              } ${isWeekend ? "bg-weekend border-weekend-foreground/20" : "bg-card"}`}
               style={{ touchAction: "auto", WebkitUserSelect: "none", userSelect: "none" }}
               draggable={!!recipe}
               onDragStart={() => handleDragStart(i)}
@@ -286,7 +287,7 @@ export default function MealPlanPage() {
               onTouchEnd={handleTouchEnd}
               onClick={() => !recipe && setSelectingDay(i)}
             >
-              <div className="bg-muted px-3 py-2 text-sm font-medium text-center">
+              <div className={`px-3 py-2 text-sm font-medium text-center ${isWeekend ? "bg-weekend-foreground/10 text-weekend-foreground" : "bg-muted"}`}>
                 {day}
               </div>
               {recipe ? (
