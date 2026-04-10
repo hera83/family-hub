@@ -321,19 +321,20 @@ export default function CalendarPage() {
 
       {/* Calendar grid */}
       <div className="grid grid-cols-7 gap-1">
-        {DAY_LABELS.map((d) => (
-          <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
+        {DAY_LABELS.map((d, i) => (
+          <div key={d} className={`text-center text-xs font-medium py-2 ${i >= 5 ? "text-weekend-foreground" : "text-muted-foreground"}`}>
             {d}
           </div>
         ))}
         {dateRange.days.map((day) => {
           const dayEvents = getEventsForDay(day);
           const isCurrentMonth = viewMode === "month" ? isSameMonth(day, currentDate) : true;
+          const isWeekend = getDay(day) === 0 || getDay(day) === 6;
           return (
             <div
               key={day.toISOString()}
               className={`min-h-[80px] md:min-h-[120px] border rounded-md p-1 cursor-pointer transition-colors hover:bg-muted/50 ${
-                isToday(day) ? "border-primary bg-primary/5" : "border-border"
+                isToday(day) ? "border-primary bg-primary/5" : isWeekend ? "border-border bg-weekend" : "border-border"
               } ${!isCurrentMonth ? "opacity-40" : ""}`}
               onClick={() => openAddEvent(day)}
             >
@@ -390,9 +391,14 @@ export default function CalendarPage() {
             <thead>
               <tr className="bg-muted">
                 <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap">Medlem</th>
-                {dateRange.days.map((day) => (
-                  <th key={day.toISOString()} className={`text-center p-2 font-medium whitespace-nowrap ${isToday(day) ? "text-primary" : "text-muted-foreground"}`}>
-                    {format(day, "EEE d.", { locale: da })}
+                {dateRange.days.map((day) => {
+                  const isWeekend = getDay(day) === 0 || getDay(day) === 6;
+                  return (
+                    <th key={day.toISOString()} className={`text-center p-2 font-medium whitespace-nowrap ${isToday(day) ? "text-primary" : isWeekend ? "text-weekend-foreground" : "text-muted-foreground"} ${isWeekend ? "bg-weekend" : ""}`}>
+                      {format(day, "EEE d.", { locale: da })}
+                    </th>
+                  );
+                })}
                   </th>
                 ))}
               </tr>
