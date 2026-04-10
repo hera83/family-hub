@@ -140,25 +140,44 @@ function useDataSources(): DataSource[] {
       mapRow: (r) => r, // not used directly
       importFn: async (rows) => {
         let c = 0;
-        for (const r of rows) {
-          const { ingredients, item_categories, ...recipe } = r;
-          // Upsert recipe
-          const { data: upserted } = await supabase.from("recipes").upsert(recipe, { onConflict: "id" }).select("id").single();
-          const recipeId = upserted?.id || recipe.id;
-          if (recipeId && Array.isArray(ingredients) && ingredients.length) {
-            // Delete existing ingredients for this recipe, then re-insert
-            await supabase.from("recipe_ingredients").delete().eq("recipe_id", recipeId);
-            const mapped = ingredients.map((ing: any) => ({
-              recipe_id: recipeId,
-              product_id: ing.product_id || null,
-              name: ing.name || ing.product_name || "",
-              quantity: Number(ing.quantity) || 1,
-              unit: ing.unit || "stk",
-              is_staple: ing.is_staple === true || ing.is_staple === "true",
-            }));
-            await supabase.from("recipe_ingredients").insert(mapped);
+        if (isLocalMode) {
+          const { createRecipe } = await import("@/lib/api/recipes");
+          const { saveRecipeIngredients } = await import("@/lib/api/recipeIngredients");
+          for (const r of rows) {
+            const { ingredients, item_categories, id, created_at, updated_at, ...recipe } = r;
+            // Try update first, then create
+            let recipeId = id;
+            try {
+              if (id) { await api.patch(`/recipes/${id}`, recipe); }
+              else { const created = await createRecipe(recipe); recipeId = created?.id; }
+            } catch { const created = await createRecipe(recipe); recipeId = created?.id; }
+            if (recipeId && Array.isArray(ingredients) && ingredients.length) {
+              const mapped = ingredients.map((ing: any) => ({
+                product_id: ing.product_id || null, product_name: ing.name || ing.product_name || "",
+                quantity: Number(ing.quantity) || 1, unit: ing.unit || "stk",
+                is_staple: ing.is_staple === true || ing.is_staple === "true",
+              }));
+              await saveRecipeIngredients(recipeId, mapped);
+            }
+            c++;
           }
-          c++;
+        } else {
+          const s = await sb();
+          for (const r of rows) {
+            const { ingredients, item_categories, ...recipe } = r;
+            const { data: upserted } = await s.from("recipes").upsert(recipe, { onConflict: "id" }).select("id").single();
+            const recipeId = upserted?.id || recipe.id;
+            if (recipeId && Array.isArray(ingredients) && ingredients.length) {
+              await s.from("recipe_ingredients").delete().eq("recipe_id", recipeId);
+              const mapped = ingredients.map((ing: any) => ({
+                recipe_id: recipeId, product_id: ing.product_id || null,
+                name: ing.name || ing.product_name || "", quantity: Number(ing.quantity) || 1,
+                unit: ing.unit || "stk", is_staple: ing.is_staple === true || ing.is_staple === "true",
+              }));
+              await s.from("recipe_ingredients").insert(mapped);
+            }
+            c++;
+          }
         }
         return c;
       },
